@@ -1,3 +1,12 @@
+2004-05-26
+    
+    * CVS update
+    
+    * Fixed:
+    - .Z80 format have swaped regs. A and F, corrected
+    - now it take care about page numbers in 48K .Z80
+
+
 2004-05-13
 
     * Rerelease of version d0.4b (AS build)
