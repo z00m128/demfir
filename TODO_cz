@@ -1,12 +1,9 @@
 fáze 1:
 - bugfixy
 - text view na libovolný soubor
-- extended reset (vymazani RAM DEMFIRu)
 
 fáze 2:
 - v browseru umo¾nit hledání podle jména (stiskem pøíslu¹ných znakù)
 - podpora POK souborù
-- u¾ivatelsky vynucené pøistránkování první VRAM v NMI menu
-- podpora HDD bez LBA (¾e já se nechám v¾dycky tak snadno ukecat :)
 - "pseudo" save?
 - lep¹í screensaver

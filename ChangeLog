@@ -1,3 +1,22 @@
+2004-02-20
+	
+	* Rerelease of version d0.5a (Still alive)
+
+	* Fixed:
+	- now uses new bin2tap
+	- CRC of ROM is counted with font in RAM (better detection of corruption)
+	- find ISO fixed (finally?)
+
+	* New:
+	- some parts can be turned on or off (see config.a80)
+	- new design, new logo
+	- key "R" (reset) together with SS do full reset (inc. font etc.)
+	- support for old HDD without LBA
+	- 48/128 mode detection, active 128K page detection
+	- VRAM switching via "V" key
+	- "exteded function meaning" moved from CAPS SHIFT to SYMBOL SHIFT
+
+
 2004-06-05
     
     * CVS update

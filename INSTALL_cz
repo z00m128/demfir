@@ -9,45 +9,10 @@ Potøebný SW
 - mkisofs (balík cdrtools [http://www.fokus.gmd.de/research/cc/glone/employees/joerg.schilling/private/mkisofs.html])
 - Macroassembler AS [http://john.ccac.rwth-aachen.de:8000/as/] (minimálnì ve
   verzi 1.42, verzí 1.41rX _NENÍ_ mo¾né DEMFIR pøelo¾it)
-- Utilitku bin2tap [http://speccy.trilogic.cz/utils/bin2tap.c.bz2] (pøelo¾it
-  napø takhle: gcc -Wall bin2tap.c -o bin2tap)
+- Utilitku bin2tap [http://zeroteam.sk/bin2tap.html]
 
-V adresáøi demfir zadat 'make' a pøeklad by mìl probìhnout automaticky. Výstup
-by mohl vypadat nìjak takhle:
-
-asl demfir.a80 -o demfird04b.p -L
-macro assembler 1.42 Beta [Bld 31]
-(i386-unknown-linux)
-(C) 1992,2004 Alfred Arnold
-Mitsubishi M16C-Generator also (C) 1999 RMS
-XILINX KCPSM(Picoblaze)-Generator (C) 2003 Andreas Wassatsch
-TMS320C2x-Generator (C) 1994/96 Thomas Sailer
-TMS320C5x-Generator (C) 1995/96 Thomas Sailer
-assembling demfir.a80
-PASS 1
-demfir.a80(4604)
-PASS 2
-demfir.a80(4604)
-0.21 seconds assembly time
-   4604 lines source file
-      2 passes
-      0 errors
-      0 warnings
-p2bin demfird04b.p -l 0 -r \$-\$
-P2BIN/C V1.42 Beta [Bld 31]
-(C) 1992,2004 Alfred Arnold
-demfird04b.p==>>demfird04b.bin  (6989 Bytes)
-bin2tap demfird04b.bin demfird04b.pat 24576
-cat basic.tpi demfird04b.pat > demfird04b.tap
-mkisofs -U -V "DEMFIR d04b INSTALL" -o demfird04b.iso demfird04b.tap
-Warning: creating filesystem that does not conform to ISO-9660.
-Total translation table size: 0
-Total rockridge attributes bytes: 0
-Total directory bytes: 0
-Path table size(bytes): 10
-Max brk space used 21000
-179 extents written (0 MB)
-
+Zkontrolovat nastavení v config.a80 a povolit preferované vlastnosti.
+V adresáøi demfir zadat 'make' a pøeklad by mìl probìhnout automaticky.
 Smazání v¹ech vygenerovaných souborù se provede pomocí 'make clean'.
 
 

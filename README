@@ -19,8 +19,7 @@ Features:
 - Filetype autodetect. Screens by filelen, emulator files by extension.
 - View of coloured (6912 B) or monochrome (6144 B) pictures with detection of
   border colour.
-- Running SNA snapshots (48K version only) [if you have some 128K SNA send it to
-  me and I'll add support for it].
+- Running SNA snapshots (48K version only, working on 128K) 
 - Running Z80 snapshots (versions 1.x, 2.x a 3.x) with version and type info.
 - Running MFC snapshots (48K i 128K)
 - Tape emulator for TAP files (read only = save not supported). After you select
@@ -29,18 +28,22 @@ Features:
   some active TAP file in DEMFIR (selected) all data is readed from IDE device.
   If TAP file is not active, data is readed from standard tape input (with
   default ROM routines).
+- Modular architecture - some parts can be turned off at compile time and there
+  will be space for some other modules.
 
 NMI menu controls (keys are emphasised):
 D = device  - device change (master/slave)
 M = medium  - reread of medium and image detection
-R = reset   - software reset (JP 0)
-I = init    - new device detect (cold start)
-Q = quit    - exit from NMI menu
+R = reset   - software reset (JP 0), with 'SYMBOL SHIFT' clears DEMFIR's RAM too
+I = init    - new device detect, with 'SYMBOL SHIFT' will try initialize
+              default CHS translation (useful only on CHS HDD). If your CHS HDD
+              is detected, but DEMFIR can't read from it, try this.
+Q = quit    - exit from NMI menu, sets selected VRAM (see 'V' key)
 F = find    - finds ISO image on any place on medium (can't be performed on real
               CD-ROM). Searching for the image starts from actual position +
               size of selected image (if any) + offset of Primary Volume
               Descriptor (16 sectors of 2 KB). If you wanna start searching
-              from actual position press key 'F' together with 'CAPS SHIFT'.
+              from actual position press key 'F' together with 'SYMBOL SHIFT'.
               Searching can be interrupted by key 'SPACE'.
 S = sector  - with this function you can specify sector where ISO image is
               expected or where you want to start searching. Use keys 0-9 and
@@ -52,6 +55,9 @@ S = sector  - with this function you can specify sector where ISO image is
               read new ISO image (when you get 'No ISO image found' message, try
               searching).
 E = eject   - ejects the medium (ATAPI only)
+V = VRAM    - shows actual Video RAM (always 1st after NMI), next press of 'V'
+              key swaps 1st and 2nd VRAM. If there is no keypress within two
+              seconds, actual VRAM is remembered and NMI menu is returned back.
 Enter       - starts file browser
 
 File browser controls:
@@ -75,4 +81,27 @@ When LOADing from TAP file and "load cursor" come to file end, TAP file is
 automatically "rewinded" to start. Position of "load cursor" can be anytime
 determined/changed by file browser.
 
+First line in NMI menu shows (left to right)
+- interrupt status (IM1/IM2, EI/DI)
+- actual mode (48K/128K)
+- active 128K page
+- selected VRAM (can't be detected)
+
+Second line shows list of supported formats
+- Z80 = Z80 snaps, all versions, enabled by WITH_Z80 in config.a80
+- SNA = SNA snaps, enabled by WITH_SNA in config.a80
+- MFC = MFC snaps, enabled by WITH_MFC in config.a80
+- SCR = picture viewer, enabled by WITH_SCR in config.a80
+
+Third line shows other modules and settings
+- CHS = support for HDD without LBA, enabled by WITH_CHS in config.a80
+- LoT = Long Timeout, extended timeout for devices, needed by some CDROMs and
+        HDDs, for CFs can be turned off, enabled by TOUT_LONG in config.a80
+- SSv = screen saver (blank screen after two minutes), enabled by WITH_SS in config.a80
+
+Logo can be selected by LOGO_TNT (older) or LOGO_F6 (new and much better), if
+no one is selected, instead of logo will be text line.
+
+
     Tritol
+

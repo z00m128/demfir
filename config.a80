@@ -1,0 +1,65 @@
+; DEMFIR configuration - change only if you know what are you doing!
+; Konfigurace DEMFIRu - mente pouze pokud vite co delate!
+
+
+; #### MODULES ####
+; #### MODULY ####
+
+; build with .z80 files support
+; prelozit s podporou souboru .z80
+WITH_Z80	equ	1
+
+; build with .sna files support
+; prelozit s podporou souboru .sna
+WITH_SNA	equ	1
+
+; build with .mfc files support
+; prelozit s podporou souboru .mfc
+WITH_MFC	equ	1
+
+; build with screen view (6144/6912)
+; prelozit s prohlizecem obrazku (6144/6912)
+WITH_SCR	equ	1
+
+; build with text file viewer
+; prelozit s prohlizecem textovych souboru
+;WITH_TXT	equ	1	; not working / nefunguje
+
+; build with poke manager
+; prelozit se "spravcem pouku"
+;WITH_POK	equ	1	; not working / nefunguje
+
+; build with support old hdd without LBA
+; prelozit s podporou starych disku bez LBA
+WITH_CHS	equ	1
+
+; build with screen saver
+; prelozit se sporicem obrazovky
+WITH_SS	equ	1
+
+; build with screen capture
+; prelozit s "tipacem obrazovek"
+;WITH_SC	equ	1	; not working / nefunguje
+
+
+
+; #### LAYOUT ####
+; #### VZHLED ####
+
+; DEMFIR logo
+; Which logo you can use (if none, only text line will be displayed)
+; Jake logo pouzivat (pokud zadne, bude zobrazen pouze textovy radek)
+LOGO_F6	equ	1
+;LOGO_TNT	equ	1
+
+
+; #### OTHER ####
+; #### DALSI ####
+
+; If you use device which suspend ifself (notebook HDD or CDROM) this causes DEMFIR will wait longer in I/O operations
+; Pokud pouzivate zarizeni ktere "usina" (CDROM a HDD z notebooku), nastavenim tohoto prinutite DEMFIR cekat dele ve V/V operacich
+TOUT_LONG	equ	1
+
+
+; nastaveni pro VI (tabulatory 5 znaku a filetype)
+; vim:set ts=5 ft=z8asl:

@@ -1,9 +1,28 @@
+2004-02-20
+
+    * Rerelease verze d0.5a (Stále na¾ivu)
+
+	* Opraveno:
+	- pou¾ívá se nová verze bin2tap
+	- CRC ROM se poèítá i pøes font v RAM (vìt¹í spolehlivost detekce po¹kození)
+	- snad u¾ koneènì plnì funkèní hledání iso image
+
+	* Nové:
+	- mo¾nost ovlivnit výsledný program pøi kompilaci (viz. config.a80)
+	- zmìna vzhledu, nové logo
+	- klávesa "R" (reset) se SS vyvolá kompletní reset (vèetnì fontu atd.)
+	- podpora diskù bez LBA módu
+	- detekce aktivního módu (48/128) a aktivní 128K stránky
+	- pøepínání VRAM klávesou "V"
+	- zapínání "roz¹íøení funkcí" pøesunuto z CAPS SHIFT na SYMBOL SHIFT
+
+
 2004-05-26
     
     * CVS update
     
     * Opraveno:
-    - chyba, diky ktere slo pouzivat pouze prvnich 64 MB z CF/HDD
+    - chyba, díky které ¹lo pou¾ívat pouze prvních 64 MB z CF/HDD
 
 
 2004-05-26

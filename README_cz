@@ -18,8 +18,7 @@ Fièury:
 - Detekce tupu souborù; obrázky podle délky, emulátorové soubory podle pøípony.
 - Prohlí¾ení barevných (6912 B) a èernobílých (6144 B) obrázkù s detekcí barvy
   borderu.
-- Spou¹tìní snapù SNA (48K version only) [jestli nìkdo máte i soubor se 128K
-  verzí, po¹lete mi ho a já pøidám podporu].
+- Spou¹tìní snapù SNA (48K version only, na 128K verzi se pracuje...)
 - Spou¹tìní snapù Z80 (verze 1.x, 2.x a 3.x) se zobrazením verze a typu.
 - Spou¹tìní snapù MFC (48K i 128K).
 - Tape emulátor pro TAP soubory (read only = save není podporováno). Pøi
@@ -27,18 +26,23 @@ Fièury:
   mo¾no nastavit load kurzor. Pokud program ète data pomocí ROM, jsou pøi
   vybrané TAPce ètena z IDE zaøízení, pokud ¾ádná TAPka vybraná není, ète se
   pøímo z MGF (pomocí standardních rutin ROM).
+- Modulární struktura - nìkteré èásti je pøi kompilaci mo¾no vypnout a udìlat
+  si tak místo pro nìjaké jiné :)
 
 Ovládání NMI menu (klávesy jsou zvýraznìny):
-D = device  - zmìna zaøízení (master/slave)
-M = medium  - znovunaètení média a nové hledání image
-R = reset   - softwarový reset (JP 0)
-I = init    - nová detekce zaøízení (cold start)
-Q = quit    - opu¹tìní NMI menu
+D = device  - zmìna zaøízení (master/slave).
+M = medium  - znovunaètení média a nové hledání image.
+R = reset   - softwarový reset (JP 0), spoleènì se 'SYMBOL SHIFT' vyma¾e i RAM DEMFIRu.
+I = init    - nová detekce zaøízení, spoleènì se 'SYMBOL SHIFT' se pokusí
+              inicializovat výchozí CHS pøepoèet (má smysl pouze pro CHS HDD).
+              Pokud máte HDD, který je nalezen, ale nelze z nìj èíst, zkuste
+              tuto inicializaci.
+Q = quit    - opu¹tìní NMI menu, nastaví zvolenou VRAM (viz. klávesa 'V')
 F = find    - nalezení ISO image kdekoli na médiu (nelze spustit na reálné
               CD-ROM). Hledání pokraèeje od aktuální pozice + velikost
               souèasného iso image (pokud je nìjaký nalezen) + offset Primary
               Volume Descriptoru (16 dvoukilových sektorù). Pokud chcete hledat
-              od aktuální pozice, stisnìte klávesu 'F' spoleènì s 'CAPS SHIFT'
+              od aktuální pozice, stisnìte klávesu 'F' spoleènì s 'SYMBOL SHIFT'
               Hledání lze pøeru¹it stiskem 'SPACE'.
 S = sector  - umo¾òuje zadat èíslo sektoru, odkud se bude èíst ISO image,
               pøípadnì od toho sektoru hledat. Reagují klávesy 0-9 a A-F pro
@@ -50,6 +54,10 @@ S = sector  - umo¾òuje zadat èíslo sektoru, odkud se bude èíst ISO image,
               sektor pou¾ije jako ofset pro naètení ISO image (pokud se objeví
               'No ISO image found', zkuste hledání.
 E = eject   - vysunutí média (ATAPI only)
+V = VRAM    - zobrazí aktuální Video RAM (po stisku NMI je to v¾dy 1.),
+              opakovaným stiskem klávesy 'V' lze pøepínat mezi 1. a 2. VRAM.
+              Pokud klávesa není sti¹tìna do dvou vteøin, aktuálnì zobrazená
+              VRAM je zapamatována a zobrazeno NMI menu.
 Enter       - vstup do browseru
 
 Ovládání browseru:
@@ -72,6 +80,28 @@ poøízen jejich seznam => není mo¾né s nimi pracovat).
 Pokud pøi LOADu z TAPky dojede kurzor na její konec, je TAPka automaticky
 "pøevinuta" na zaèátek. Pozici load kurzoru lze kdykoliv zjistit/zmìnit pøes
 browser.
+
+V NMI menu je v úplnì prvním øádku zobrazeno (zleva doprava):
+- stav pøeru¹ení (IM1/IM2, EI/DI)
+- aktuální mód (48K/128K)
+- aktivní 128K stránka
+- zvolená VRAM (nelze detekovat)
+
+V druhém øádku je seznam podporovaných formátù
+- Z80 = snapy Z80 v¹ech verzí, povoluje WITH_Z80 v config.a80 
+- SNA = snapy SNA, povoluje WITH_SNA v config.a80
+- MFC = snapy MFC, povoluje WITH_MFC v config.a80
+- SCR = prohlí¾eè obrázkù, povoluje WITH_SCR v config.a80
+
+Ve tøetím øádku jsou ostatní moduly a nastavení
+- CHS = podpora pro HDD bez LBA, povoluje WITH_CHS v config.a80
+- LoT = Long Timeout, prodlou¾ený timeout pøi práci se zaøízením, nutné pro
+        nìkteré CDROM a HDD, pro CF mo¾no vypnout, povoluje TOUT_LONG v config.a80
+- SSv = spoøiè obrazovky (po dvou minutách zèerná obrazovka), povoluje WITH_SS v config.a80
+
+Logo lze zmìnit pomocí LOGO_TNT (pùvodní) nebo LOGO_F6 (nové a hezèí :), pokud
+nebude povoleno ani jedno, je logo nahrazeno textovým øádkem.
+
 
     Tritol
 
