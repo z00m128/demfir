@@ -1,0 +1,78 @@
+DTP's EMulator FIles Runner
+===========================
+
+divIDE version
+
+
+Features:
+- All is done in NMI menu.
+- Own detection of IDE devices.
+- Works with iso9660 (CD-ROM image) directly from CD-ROM device or stored on ZIP
+  drive, HDD or CompactFlash. Image is automatically detected only if is stored
+  from beginning of the medium. If image is not stored from the beginning you
+  have to use "search" function.
+- Search for ISO image function. Start of the image can be detected by
+  sequential medium read. It's not too fast so don't store your images too far
+  from start of the medium.
+- Ability to browse whole directory tree (integrated file browser).
+- Everything is remembered (actual directory, cursor position, .TAP data etc.).
+- Filetype autodetect. Screens by filelen, emulator files by extension.
+- View of coloured (6912 B) or monochrome (6144 B) pictures with detection of
+  border colour.
+- Running SNA snapshots (48K version only) [if you have some 128K SNA send it to
+  me and I'll add support for it].
+- Running Z80 snapshots (versions 1.x, 2.x a 3.x) with version and type info.
+- Running MFC snapshots (48K i 128K)
+- Tape emulator for TAP files (read only = save not supported). After you select
+  TAP file in browser content is presented as "virtual" directory and you can
+  set "load cursor". If your program reads data with ROM rutines and there is
+  some active TAP file in DEMFIR (selected) all data is readed from IDE device.
+  If TAP file is not active, data is readed from standard tape input (with
+  default ROM routines).
+
+NMI menu controls (keys are emphasised):
+D = device  - device change (master/slave)
+M = medium  - reread of medium and image detection
+R = reset   - software reset (JP 0)
+I = init    - new device detect (cold start)
+Q = quit    - exit from NMI menu
+F = find    - finds ISO image on any place on medium (can't be performed on real
+              CD-ROM). Searching for the image starts from actual position +
+              size of selected image (if any) + offset of Primary Volume
+              Descriptor (16 sectors of 2 KB). If you wanna start searching
+              from actual position press key 'F' together with 'CAPS SHIFT'.
+              Searching can be interrupted by key 'SPACE'.
+S = sector  - with this function you can specify sector where ISO image is
+              expected or where you want to start searching. Use keys 0-9 and
+              A-F for hexadecimal number, 'SPACE' for move to next position,
+              'SYMBOL SHIFT' for move to previous position. Input goes from
+              right to left and digit position is significant. After 7th digit
+              cursor goes to start (1st digit) - can't go back (with 'SYMBOL
+              SHIFT'). 'ENTER' quits input mode and new sector number is used to
+              read new ISO image (when you get 'No ISO image found' message, try
+              searching).
+E = eject   - ejects the medium (ATAPI only)
+Enter       - starts file browser
+
+File browser controls:
+up          - move cursor to previous file
+down        - move cursor to next file
+left        - skip to begin of the page, if cursor is already on the beginning
+              skip to previous page
+right       - skip to end of the page, if cursor is already on the and, skip to
+              next page
+Enter       - action = view of the picture (waits for any key), snapshot run,
+              walk through directories or TAP files, "load cursor" set (depends
+              on circumstances)
+Space       - file browser exit
+
+
+When you working with TAP files, cursor goes green (everything is ok), red
+(broken TAP file) or yellow (TAP file is ok, but contains too many files and
+DEMFIR can't index it => you can't use these unindexed files).
+
+When LOADing from TAP file and "load cursor" come to file end, TAP file is
+automatically "rewinded" to start. Position of "load cursor" can be anytime
+determined/changed by file browser.
+
+    Tritol

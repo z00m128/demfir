@@ -1,0 +1,8 @@
+- FINDISO did't call GETREADY => one sector is skipped after medium change
+  without reread
+- Size of the medium is not refereshed or is broken in some cases (fixed ???)
+- It allows speccyfy max. sector number to value taken from medium size, but
+  image search is performed few sectors after => read error
+- Running of .MFC snapshots is not OK, some problems with 2nd VRAM
+- When pressed NMI without RESET after DEMFIR upgrade required inicialisation
+  is not performed

@@ -1,0 +1,141 @@
+2004-05-13
+
+    * Rerelease verze d0.4b (pøelo¾eno ASem)
+
+    * Nové:
+    - obsahuje zdrojový kód
+    - dokumentace pøelo¾ena do angliètiny
+
+
+2004-02-16
+
+    * Verze d0.4b (oprava chyb + bonus)
+
+    * Opraveno:
+    - pøi emulaci load se explicitnì zaká¾e pøeru¹ení
+    - SW reset -> ticho do AY, 48K ROM, 1. VRAM, pg. 0 na 49152 (u¾ bylo døíve)
+    - jméno mù¾e obsahovat více teèek (neotestováno)
+    - vylep¹ena detekce 48/128 .Z80
+    - pøi load 48K snapù konfigurace 128K pamìti jako po resetu
+
+    * Nové:
+    - výpis verze .Z80 a módu (48/128) pøi spou¹tìní (kde má význam)
+    - spou¹tìní .MFC snapù
+
+
+2004-02-09
+
+    * Verze d0.4a (Love sees no color)
+
+    * Opraveno:
+    - QUIT u¾ se korektnì vrací
+    - zálohování VRAM
+    - návrat z MNI s povoleným pøeru¹ením kdy¾ být nemìlo
+    - inicializace (klávesa I) nezbùsobuje dal¹í inicializaci po resetu
+    - dal¹í image je správnì nalezen pøi pøeskoèení stávajícího
+    - lep¹í emulace load (IX=IX+DE;DE=0)
+    - pøi spu¹tìní Z80 je nastaven border
+
+    * Nové:
+    - font se instaluje ze ZX ROM do divIDE RAM po resetu a není mo¾né ho mìnit
+    - zmìnìno barevné schéma
+    - sní¾en timeout IDE zaøízení
+    - podpora nekomprimovaných Z80 1.x
+    - podpora nekomprimovaných blokù v Z80 2.x+
+    - ignorování neplatných stránek (napø. ROM) v Z80 2.x+
+    - plná detekce IM 2 (vykonáním, ne podle registru I)
+    - NMI menu má vlastní zásobník a IM 1
+    - odhad borderu pøi opu¹tìní NMI menu nebo zobrazení obrázku
+    - vstoupení do MNI menu umlèí AY, po opu¹tìní vrátí pùvodní hodnoty
+      (neotestováno - nemám zvuk)
+
+
+2003-10-17
+    
+    * Verze d0.3c (Zlincon 2003 release)
+
+    * Opraveno:
+    - stránkování do MAPRAM po reset (nemohlo bì¾et ve FLASH)
+
+    * Nové:
+    - lze zadávat èíslo sektoru, kde se nachází image pøípadnì od tohoto sektoru
+      hledat
+    - logo (pøi RESETu a v NMI menu)
+    - ukládání a obnovování obrazovky pøi zobrazení nebo ukonèení NMI menu
+      (bohu¾el ten quit nefunguje úplnì správnì, a teï nemám èas to hledat)
+
+
+2003-10-07
+
+    * Verze d0.3b (oprava chyb)
+
+    * Opraveno:
+    - opìt pracuje s CDROM (testováno s CDROM, ZIPdrive a CF)
+    - správné chování hledání ISO image (pouze na po¾adavek u¾ivatele)
+
+    * Nové:
+    - zkrácení helpu kláves
+    - hledání dal¹ího image pokraèuje a¾ za koncem souèasného a na místì
+      pøedpokládaného výskytu dal¹ího - pøeskoèen offset Primary Volume
+      Desciptoru (16 dvoukilových sektorù). Lze potlaèit stiskem CAPS SHIFT.
+
+
+2003-09-25
+
+    * Verze d0.3a (veøejné technické preview)
+    
+    * Opraveno:
+    - po resetu stránkuje 48K BASIC i na +2A/+3 (netestováno, nemám orig. +2A)
+
+    * Nové:
+    - první verze automatického hledání ISO image na ZIP/CF/HDD (image nemusí
+      být od sektoru 0), chování se je¹tì bude výraznì mìnit
+
+
+2003-09-22
+    
+    * Verze d0.2c (neveøejná)
+
+    * Opraveno:
+    - po inicializaci je rovnou naèteno médium bez nutnosti maèkat klávesu 'm'
+    - vybraná TAPka "pøe¾ije" hw reset (døíve Tape loading error)
+
+    * Nové:
+    - prvotní inicializace RAM je realizována po neshodì kontrolního souètu
+      ROM pøi resetu (nová verze DEMFIRu nebo pøepsaná RAM)
+
+
+2003-09-17
+
+    * Verze d0.2b (neveøejná)
+
+    * Opraveno:
+    - chyby pøi zmìnì adresáøe (HDD/CF emulace)
+    - zmìnìn formát výpisu velikosti média
+
+
+2003-09-16
+
+    * Verze d0.2a (neveøejná)
+
+    * Opraveno:
+    - èekání na data ready pro ATAPI zaøízení
+
+    * Nové:
+    - sw reset
+    - základní podpora HDD/CF
+    
+
+2003-09-09
+    
+    * Verze d0.1c (oprava chyb)
+
+    * Opraveno:
+    - pøíli¹ rychlé ètení kláves (Device, Quit atd.)
+    - o¹etøení zákmitù NMI tlaèítka
+    - po¹kození nìkterých datových struktur po hw resetu zaøízení
+
+
+2003-09-02
+
+    * Verze d0.1b (první uvolnìní pro veøejnost)

@@ -1,0 +1,9 @@
+- FINDISO nevolá GETREADY, tak¾e po výmìnì média a následném hledání bez
+  naètení je pøeskoèen jeden sektor
+- Velikost média se v nìkterých pøípadech nepøekresluje nebo pøekresluje ¹patnì
+  (opraveno ???)
+- Zadání èísla sektoru umo¾ní zadat max. èíslo sektoru podle velikosti média,
+  ale image se hledá a¾ dál => read error
+- Spou¹tìní .MFC není je¹tì úplnì dokonalé, obèas problémy s 2. VRAM
+- Pokud se po upgrade DEMFIRu stiskne NMI døíve ne¾ RESET, nenastane nová
+  inicializace dat

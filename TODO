@@ -1,0 +1,12 @@
+phase 1:
+- bugfixes
+- text view on any file
+- extended reset (DEMFIR's RAM cleanup)
+
+phase 2:
+- search filenames in browser by typing letters
+- suppert for .pok files
+- user forced VRAM paging in NMI menu
+- support for HDDs without LBA mode
+- any kind of save?
+- better screensaver
