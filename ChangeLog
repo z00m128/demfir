@@ -1,20 +1,30 @@
+2005-02-28
+    
+    * Release of version d0.5b (Damned IDE devices)
+
+    * New:
+    - improved code and logic of IDE devices detection + translation setting
+    - 128K SNA
+    - snaps with enabled interrupt are synced with it on run
+
+
 2005-02-20
-	
-	* Rerelease of version d0.5a (Still alive)
+    
+    * Rerelease of version d0.5a (Still alive)
 
-	* Fixed:
-	- now uses new bin2tap
-	- CRC of ROM is counted with font in RAM (better detection of corruption)
-	- find ISO fixed (finally?)
+    * Fixed:
+    - now uses new bin2tap
+    - CRC of ROM is counted with font in RAM (better detection of corruption)
+    - find ISO fixed (finally?)
 
-	* New:
-	- some parts can be turned on or off (see config.a80)
-	- new design, new logo
-	- key "R" (reset) together with SS do full reset (inc. font etc.)
-	- support for old HDD without LBA
-	- 48/128 mode detection, active 128K page detection
-	- VRAM switching via "V" key
-	- "exteded function meaning" moved from CAPS SHIFT to SYMBOL SHIFT
+    * New:
+    - some parts can be turned on or off (see config.a80)
+    - new design, new logo
+    - key "R" (reset) together with SS do full reset (inc. font etc.)
+    - support for old HDD without LBA
+    - 48/128 mode detection, active 128K page detection
+    - VRAM switching via "V" key
+    - "exteded function meaning" moved from CAPS SHIFT to SYMBOL SHIFT
 
 
 2004-06-05

@@ -1,20 +1,31 @@
+2005-02-28
+
+    * Release verze d0.5b (Zatracená IDE zaøízení)
+
+    * Nové:
+    - zmìnìn kód a logika detekce IDE zaøízení + nastavování geometrie
+    - 128K SNA
+    - snapy s povoleným pøeru¹ením jsou s ním pøi spou¹tìní synchronizovány
+    - snaps with enabled interrupt are synced with it on run
+
+
 2005-02-20
 
     * Rerelease verze d0.5a (Stále na¾ivu)
 
-	* Opraveno:
-	- pou¾ívá se nová verze bin2tap
-	- CRC ROM se poèítá i pøes font v RAM (vìt¹í spolehlivost detekce po¹kození)
-	- snad u¾ koneènì plnì funkèní hledání iso image
+    * Opraveno:
+    - pou¾ívá se nová verze bin2tap
+    - CRC ROM se poèítá i pøes font v RAM (vìt¹í spolehlivost detekce po¹kození)
+    - snad u¾ koneènì plnì funkèní hledání iso image
 
-	* Nové:
-	- mo¾nost ovlivnit výsledný program pøi kompilaci (viz. config.a80)
-	- zmìna vzhledu, nové logo
-	- klávesa "R" (reset) se SS vyvolá kompletní reset (vèetnì fontu atd.)
-	- podpora diskù bez LBA módu
-	- detekce aktivního módu (48/128) a aktivní 128K stránky
-	- pøepínání VRAM klávesou "V"
-	- zapínání "roz¹íøení funkcí" pøesunuto z CAPS SHIFT na SYMBOL SHIFT
+    * Nové:
+    - mo¾nost ovlivnit výsledný program pøi kompilaci (viz. config.a80)
+    - zmìna vzhledu, nové logo
+    - klávesa "R" (reset) se SS vyvolá kompletní reset (vèetnì fontu atd.)
+    - podpora diskù bez LBA módu
+    - detekce aktivního módu (48/128) a aktivní 128K stránky
+    - pøepínání VRAM klávesou "V"
+    - zapínání "roz¹íøení funkcí" pøesunuto z CAPS SHIFT na SYMBOL SHIFT
 
 
 2004-06-05

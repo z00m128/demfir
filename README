@@ -19,9 +19,9 @@ Features:
 - Filetype autodetect. Screens by filelen, emulator files by extension.
 - View of coloured (6912 B) or monochrome (6144 B) pictures with detection of
   border colour.
-- Running SNA snapshots (48K version only, working on 128K) 
+- Running SNA snapshots (48K and 128K) 
 - Running Z80 snapshots (versions 1.x, 2.x a 3.x) with version and type info.
-- Running MFC snapshots (48K i 128K)
+- Running MFC snapshots (48K and 128K)
 - Tape emulator for TAP files (read only = save not supported). After you select
   TAP file in browser content is presented as "virtual" directory and you can
   set "load cursor". If your program reads data with ROM rutines and there is
@@ -35,10 +35,19 @@ NMI menu controls (keys are emphasised):
 D = device  - device change (master/slave)
 M = medium  - reread of medium and image detection
 R = reset   - software reset (JP 0), with 'SYMBOL SHIFT' clears DEMFIR's RAM too
-I = init    - new device detect, with 'SYMBOL SHIFT' will try initialize
-              default CHS translation (useful only on CHS HDD). If your CHS HDD
-              is detected, but DEMFIR can't read from it, try this.
-Q = quit    - exit from NMI menu, sets selected VRAM (see 'V' key)
+I = init    - new devices detection, with 'SYMBOL SHIFT' bypasses detected
+              device size and set maximum size (128 GB for LBA a c. 8 GB for
+              CHS). For CHS in addition get default geometry instead of actual
+              (may help with old or nonstandard hdds).
+              If build with WITH_WDC and hdd tells invalid actual geometry
+              (some Western Digital hdds) DEMFIR try initialize CHS
+              translation. After that instead of device name is text "CHS
+              translation:" and three numbers (actual CHS). Then you HAVE TO
+              detect devices AGAIN. If next detection will have the same
+              result ("CHS translation:" etc.), your hdd is not able remember
+              new geometry. Then use detection with 'SYMBOL SHIFT', it bypasses
+              initialization of geometry too and hdd should be usable.
+Q = quit    - exit from NMI menu, switch to selected VRAM (see 'V' key)
 F = find    - finds ISO image on any place on medium (can't be performed on real
               CD-ROM). Searching for the image starts from actual position +
               size of selected image (if any) + offset of Primary Volume
@@ -57,7 +66,9 @@ S = sector  - with this function you can specify sector where ISO image is
 E = eject   - ejects the medium (ATAPI only)
 V = VRAM    - shows actual Video RAM (always 1st after NMI), next press of 'V'
               key swaps 1st and 2nd VRAM. If there is no keypress within two
-              seconds, actual VRAM is remembered and NMI menu is returned back.
+              seconds after last keypress, displayed VRAM is set for Quit and
+              DEMFIR returns to NMI menu. In 48K mode only shows 1st VRAM,
+              switching doesn't work.
 Enter       - starts file browser
 
 File browser controls:
@@ -95,9 +106,12 @@ Second line shows list of supported formats
 
 Third line shows other modules and settings
 - CHS = support for HDD without LBA, enabled by WITH_CHS in config.a80
+- WDC = automatic geometry pre-set during device detection, required for some
+        Western Caviar disks, enabled by WITH_WDC in config.a80
 - LoT = Long Timeout, extended timeout for devices, needed by some CDROMs and
         HDDs, for CFs can be turned off, enabled by TOUT_LONG in config.a80
-- SSv = screen saver (blank screen after two minutes), enabled by WITH_SS in config.a80
+- SSv = screen saver (blank screen after two minutes), enabled by WITH_SS in
+        config.a80
 
 Logo can be selected by LOGO_TNT (older) or LOGO_F6 (new and much better), if
 no one is selected, instead of logo will be text line.

@@ -29,9 +29,13 @@ WITH_SCR	equ	1
 ; prelozit se "spravcem pouku"
 ;WITH_POK	equ	1	; not working / nefunguje
 
-; build with support old hdd without LBA
+; build with support for old hdd without LBA
 ; prelozit s podporou starych disku bez LBA
 WITH_CHS	equ	1
+
+; build with support for WD Caviar hdd
+; prelozit s podporou hdd WD Caviar
+WITH_WDC	equ	1
 
 ; build with screen saver
 ; prelozit se sporicem obrazovky

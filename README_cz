@@ -18,7 +18,7 @@ Fièury:
 - Detekce tupu souborù; obrázky podle délky, emulátorové soubory podle pøípony.
 - Prohlí¾ení barevných (6912 B) a èernobílých (6144 B) obrázkù s detekcí barvy
   borderu.
-- Spou¹tìní snapù SNA (48K version only, na 128K verzi se pracuje...)
+- Spou¹tìní snapù SNA (48K i 128K)
 - Spou¹tìní snapù Z80 (verze 1.x, 2.x a 3.x) se zobrazením verze a typu.
 - Spou¹tìní snapù MFC (48K i 128K).
 - Tape emulátor pro TAP soubory (read only = save není podporováno). Pøi
@@ -32,12 +32,23 @@ Fièury:
 Ovládání NMI menu (klávesy jsou zvýraznìny):
 D = device  - zmìna zaøízení (master/slave).
 M = medium  - znovunaètení média a nové hledání image.
-R = reset   - softwarový reset (JP 0), spoleènì se 'SYMBOL SHIFT' vyma¾e i RAM DEMFIRu.
-I = init    - nová detekce zaøízení, spoleènì se 'SYMBOL SHIFT' se pokusí
-              inicializovat výchozí CHS pøepoèet (má smysl pouze pro CHS HDD).
-              Pokud máte HDD, který je nalezen, ale nelze z nìj èíst, zkuste
-              tuto inicializaci.
-Q = quit    - opu¹tìní NMI menu, nastaví zvolenou VRAM (viz. klávesa 'V')
+R = reset   - softwarový reset (JP 0), spoleènì se 'SYMBOL SHIFT' vyma¾e i RAM
+              DEMFIRu.
+I = init    - nová detekce zaøízení, spoleènì se 'SYMBOL SHIFT' pro LBA i CHS
+              disky ignoruje zji¹tìnou velikost zaøízení a nastaví max. hodnoty
+              (128 GB pro LBA a cca 8 GB pro CHS). Pro CHS disky navíc vezme
+              výchozí geometrii místo aktuální (mù¾e pomoci s nìkterými starými
+              nebo nestandardními disky).
+              Pokud je pøelo¾eno s WITH_WDC a disk vykazuje neplatnou aktuální
+              geometrii (nìkteré Western Digital), disku je nastavena výchozí
+              geometrie a místo jména zaøízení se objeví "CHS translation:" a
+              tøi èísla oddìlené lomítky znaèící nastavenou geometrii. Poté JE
+              NUTNO provést detekci ZNOVU. V pøípadì, ¾e dal¹í detekce dopadne
+              stejnì (opìt "CHS translation:" atd.), vá¹ disk není ochoten si
+              novou geometrii zapamatovat a pak je tøeba provést detekci
+              spoleènì se sti¹tìným 'SYMBOL SHIFT'. To zamezí nastavování
+              geometrie a disk bude pou¾it tak jak je.
+Q = quit    - opu¹tìní NMI menu, pøepne na zvolenou VRAM (viz. klávesa 'V')
 F = find    - nalezení ISO image kdekoli na médiu (nelze spustit na reálné
               CD-ROM). Hledání pokraèeje od aktuální pozice + velikost
               souèasného iso image (pokud je nìjaký nalezen) + offset Primary
@@ -47,17 +58,19 @@ F = find    - nalezení ISO image kdekoli na médiu (nelze spustit na reálné
 S = sector  - umo¾òuje zadat èíslo sektoru, odkud se bude èíst ISO image,
               pøípadnì od toho sektoru hledat. Reagují klávesy 0-9 a A-F pro
               èíslice hexa èísla, 'SPACE' pro posun na dal¹í znak, 'SYMBOL
-              SHIFT' pro posun na pøedcházející znak. Èíslice se zadávají zprava
-              do leva a zále¾í na pozici cifer. Po dosa¾ení sedmé cifry se
-              kurzor pøesune na zaèátek (1. cifra) - nefuguje obrácenì (pøi
-              posunu pomocí 'SYMBOL SHIFT'). 'ENTER' vstup ukonèí a DEMFIR zadaný
-              sektor pou¾ije jako ofset pro naètení ISO image (pokud se objeví
-              'No ISO image found', zkuste hledání.
-E = eject   - vysunutí média (ATAPI only)
+              SHIFT' pro posun na pøedcházející znak. Èíslice se zadávají
+              zprava do leva a zále¾í na pozici cifer. Po dosa¾ení sedmé cifry
+              se kurzor pøesune na zaèátek (1. cifra) - nefuguje obrácenì (pøi
+              posunu pomocí 'SYMBOL SHIFT'). 'ENTER' vstup ukonèí a DEMFIR
+              zadaný sektor pou¾ije jako ofset pro naètení ISO image (pokud se
+              objeví 'No ISO image found', zkuste hledání.
+E = eject   - vysunutí média (pouze pro ATAPI tj. CDROM a ZIPdrive)
 V = VRAM    - zobrazí aktuální Video RAM (po stisku NMI je to v¾dy 1.),
               opakovaným stiskem klávesy 'V' lze pøepínat mezi 1. a 2. VRAM.
-              Pokud klávesa není sti¹tìna do dvou vteøin, aktuálnì zobrazená
-              VRAM je zapamatována a zobrazeno NMI menu.
+              Pokud bìhem zobrazování není 'V' sti¹tìno do dvou vteøin od
+              poslední zmìny, aktuálnì zobrazená VRAM je nastavena pro Quit a
+              DEMFIR se vrátí do NMI menu. Ve 48K re¾imu pouze zobrazí 1. VRAM,
+              pøepínání není mo¾né.
 Enter       - vstup do browseru
 
 Ovládání browseru:
@@ -83,7 +96,7 @@ browser.
 
 V NMI menu je v úplnì prvním øádku zobrazeno (zleva doprava):
 - stav pøeru¹ení (IM1/IM2, EI/DI)
-- aktuální mód (48K/128K)
+- aktuální re¾im (48K/128K)
 - aktivní 128K stránka
 - zvolená VRAM (nelze detekovat)
 
@@ -95,9 +108,13 @@ V druhém øádku je seznam podporovaných formátù
 
 Ve tøetím øádku jsou ostatní moduly a nastavení
 - CHS = podpora pro HDD bez LBA, povoluje WITH_CHS v config.a80
+- WDC = automatické nastavování geometrie pøi detekci zaøízení, vy¾adují
+        nìkteré disky Western Caviar, povoluje WITH_WDC v config.a80
 - LoT = Long Timeout, prodlou¾ený timeout pøi práci se zaøízením, nutné pro
-        nìkteré CDROM a HDD, pro CF mo¾no vypnout, povoluje TOUT_LONG v config.a80
-- SSv = spoøiè obrazovky (po dvou minutách zèerná obrazovka), povoluje WITH_SS v config.a80
+        nìkteré CDROM a HDD, pro CF mo¾no vypnout, povoluje TOUT_LONG v
+        config.a80
+- SSv = spoøiè obrazovky (po dvou minutách zèerná obrazovka), povoluje WITH_SS
+        v config.a80
 
 Logo lze zmìnit pomocí LOGO_TNT (pùvodní) nebo LOGO_F6 (nové a hezèí :), pokud
 nebude povoleno ani jedno, je logo nahrazeno textovým øádkem.

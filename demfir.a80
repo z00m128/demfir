@@ -64,17 +64,30 @@ HKONST	equ	160
 ;(skutecne jednotky jsou 256 preruseni)
 SSAVER	equ	120/5
 
-;delka .sna souboru
-SNALEN	equ	49179
-
+	ifdef WITH_SNA
+;delky .sna souboru
+SNALEN1	equ	49179
+SNALEN2	equ	131103
+SNALEN3	equ	147487
 ;odtud zacina .sna
 SNASTART	equ	16384-27
+;PC pro 128K verzi
+SNAPC	equ	SNASTART-2
+;cislo stranky pro 128K verzi
+SNAPAGE	equ	SNAPC-1
+	endif
+
+	ifdef WITH_MFC
 ;zajimava data z .mfc
 MFCHEAD	equ	55
 ;odtud zacina .mfc
 MFCSTART	equ	16384-MFCHEAD
+	endif
+
+	ifdef WITH_Z80
 ;odtud zacina .z80
 Z80START	equ	16384-30-25
+	endif
 
 ;promenne pro praci s casem (musi byt takhle za sebou)
 	ifdef WITH_SS
@@ -477,8 +490,8 @@ NMIMENU2
 		rst	24				;call PRINTSP
 		defb	19,1,17,0			;bright 1: paper 0
 		defb 22,12,27,16,2		;red
-DVERS	defb	"d0.5a"
-;DVERS	defb	"50220"
+DVERS	defb	"d0.5b"
+;DVERS	defb	"50227"
 		defb 22,0,0,16,6		;yellow
 		defb "Int:"
 		defb	16,4,'I','M'+128
@@ -551,6 +564,9 @@ INFO4	rst	16
 	ifdef WITH_CHS
 		defb "CHS "
 	endif
+	ifdef WITH_WDC
+		defb "WDC "
+	endif
 	ifdef TOUT_LONG
 		defb "LoT "
 	endif
@@ -582,22 +598,6 @@ INITDEV
 		ei
 		call	NOSIFR
 		di
-
-;debug
-	ifdef DEBUG
-		rst	24
-		defb	22,2,16+128
-		ld	a,(MAS_SECS)
-		ld	l,a
-		call	PRINTL
-		ld	a,32
-		rst	16
-		ld	a,(MAS_HEDS)
-		ld	l,a
-		call	PRINTL
-	endif
-;debug
-
 		rst	24				;call PRINTSP
 		defb	22,17,128
 		call	SPACES
@@ -902,8 +902,7 @@ CARD3
 		ret
 
 
-;preskoci BC bajtu od posled.
-;mista
+;preskoci BC bajtu od posledniho mista
 CASEEK
 		ld	hl,(CACHEREM)
 		ld	a,l
@@ -1380,16 +1379,13 @@ RESET
 ;co asi :)
 ;pri SS reset i s vymazanim RAM & spol
 ;fixme
-		ld	a,127
-		in	a,(254)
-		rra
-		rra
+		call	SSHIFT
 		jr	c,RESET2
 ;poskodime CRC
 		ld	a,(ROMCRC)
 		cpl
 		ld	(ROMCRC),a
-RESET2	jp	0
+RESET2	rst	0
 
 
 VRAMSEL
@@ -1826,21 +1822,19 @@ TSTATAPI
 		ret	c
 		ld	a,1
 		ld	(ix+32),a
-		jr	DETECT2
+		jp	DETECT2
 
 DETECT
 		ld	(DEVICE),a
 		or	HKONST
 		out	(RHEAD),a
 ;active master/slave
-
 ;inicializace prostoru
 		push	ix
 		pop	de
 		ld	hl,NOTDEV
 		ld	bc,34
 		ldir
-
 		ld	a,CIDENT
 		out	(RCOM),a
 		ld	hl,BUFFER
@@ -1852,6 +1846,67 @@ DETECT
 ;test konce operace
 		call	IDE_DRRD
 		ret	c
+	ifdef WITH_WDC
+;at je to LBA nebo CHS zarizeni, zkusime jestli ma nahozenou translaci
+;(WD Caviar bez toho nezijou ani v LBA modu (pekny sracky))
+;preskocit na zadost uzivatele?
+		call	SSHIFT
+		jr	nc,CHSOK
+;je platna geometrie? (mozna by se mel testovat i validity bit,
+;ale snad to nebude potreba)
+TSTCHS	ld	hl,BUFFER+108
+		ld	a,(hl)
+		inc	hl
+		or	(hl)		;109
+		inc	hl
+		or	(hl)		;110
+		inc	hl
+		inc	hl
+		or	(hl)		;112
+		jr	nz,CHSOK
+;inicializace default CHS prepoctu
+CHSINIT	ld	a,(BUFFER+6)		;heads
+		dec	a				;device chce maxheads (=actheads-1)
+		and	15				;pro jistotu kdyby nahodou byla 0
+		ld	b,a
+		ld	a,(DEVICE)
+		or	HKONST
+		or	b
+		ld	b,a
+		ld	a,CICHS
+		ex	af,af'
+		ld	a,(BUFFER+12)		;sectors
+		ld	de,0
+		ld	c,e
+		call	IDEOUT
+		jr	c,DETECT2
+;test konce operace
+		call	IDE_DRRD
+		jr	c,DETECT2
+		in	a,(RSTAT)
+		rra
+		jr	c,DETECT2
+;povedlo se nastavit default CHS prepocet, nechame detekce a oznamime
+		push	ix
+		pop	de
+		ld	bc,17
+		ld	hl,CHSSUCC
+		ldir
+		push	de
+		pop	ix
+		ld	hl,(BUFFER+2)
+		call	STOR16DC
+		ld	(ix+0),'/'
+		inc	ix
+		ld	hl,(BUFFER+6)
+		call	STOR6DC
+		ld	(ix+0),'/'
+		inc	ix
+		ld	hl,(BUFFER+12)
+		jp	STOR6DC
+		
+CHSOK
+	endif ;WITH_WDC
 ;podporuje ide zarizeni LBA?
 		ld	a,(BUFFER+99)
 		bit	1,a
@@ -1861,15 +1916,20 @@ DETECT
 		jr	z,DETECT2
 	endif
 ;podporuje, berem
+		call	SSHIFT			;SS=fixed size
 		ld	a,2
+		ld	hl,(BUFFER+120)
+		ld	de,(BUFFER+122)
+		jr	c,DETECTSPL
+		ld	de,4095			;268435455 = 2^28-1
+		ld	hl,65535
+DETECTSPL
 		ld	(ix+32),a
 ;uloz si velikost disku
-		ld	hl,(BUFFER+120)
 		ld	(ix+34),l
 		ld	(ix+35),h
-		ld	hl,(BUFFER+122)
-		ld	(ix+36),l
-		ld	(ix+37),h
+		ld	(ix+36),e
+		ld	(ix+37),d
 DETECT2
 		push	ix
 		pop	de
@@ -1884,89 +1944,25 @@ DETECT2
 
 	ifdef WITH_CHS
 DETECT3
-;mohlo by to byt funkcni CHS zarizeni, zkusime inicializovat CHS translaci
-;spocitani velikosti (jde si precist identify, ale muselo by se cist 2x a vubec
-;neni jisty jestli ty zarizeni umej pocitat)
-		ld	a,(BUFFER+6)		;heads
-		ld	(ix+38),a
-		ld	h,a
-		dec	a				;device chce maxheads (=actheads-1)
-		and	15
-		push	af
-		ld	a,(BUFFER+12)		;sectors
-		ld	(ix+39),a
-		ld	e,a
-		ex	af,af'
-		ld	l,0
-		ld	d,l
-		ld	b,7
-;nasobeni 8*8 BAZE 
-;Input: H = Multiplier, E = Multiplicand, L = 0, D = 0
-;Output: HL = Product
-		sla	h				; optimised 1st iteration
-		jr	nc,NAS_CHS1
-		ld	l,e
-NAS_CHS1	add	hl,hl			; unroll 7 times
-		jr	nc,NAS_CHS2		; ...
-		add	hl,de			; ...
-NAS_CHS2	djnz	NAS_CHS1
-;konec nasobeni BAZE
-		ld	b,h
-		ld	c,l
-		ld	de,(BUFFER+2)		;cylinders (neni potreba schovavat)
-		ld	hl,0
-		ld	a,15
-;nasobeni 16*16 BAZE 
-;Input: DE = Multiplier, BC = Multiplicand, HL = 0
-;Output: DE:HL = Product
-		sla	e				; optimised 1st iteration
-		rl	d
-		jr	nc,NAS_CHS3
-		ld	h,b
-		ld	l,c
-NAS_CHS3	add	hl,hl			; unroll 15 times
-		rl	e				; ...
-		rl	d				; ...
-		jr	nc,NAS_CHS4		; ...
-		add	hl,bc			; ...
-		jr	nc,NAS_CHS4		; ...
-		inc	de				; ...
-NAS_CHS4	dec	a
-		jr	nz,NAS_CHS3
-;konec nasobeni BAZE
-;mozna by vysledek mel byt zmensen o 1
-		ld	(ix+34),l
-		ld	(ix+35),h
-		ld	(ix+36),e
-		ld	(ix+37),d
-		pop	bc				; v b pocet hlav (z push af)
-		ld	a,127			;inicializace pouze pri stisku SS
-		in	a,(254)
-		rra
-		rra
-		jr	c,DETECT4
-		ld	a,(DEVICE)
-		or	HKONST
-		or	b
+;je to CHS zarizeni
+;spolehnem se na spocitanou geometri a velikost
+		ld	bc,(BUFFER+112)		;current sectors
+		ld	a,(BUFFER+110)			;current heads
 		ld	b,a
-		ld	a,CICHS
-		ex	af,af'
-		ld	de,0
-		ld	c,e
-		call	IDEOUT
-		jr	c,DETECT2			;chyba, smula
-;test konce operace
-		call	IDE_DRRD
-		jp	c,DETECT2			;chyba, smula
-		in	a,(RSTAT)
-		rra
-		jp	c,DETECT2			;zarizeni se to nelibi (smula :)
-DETECT4
+		ld	hl,(BUFFER+114)
+		ld	de,(BUFFER+116)
+		call	SSHIFT				;SS=fixed size + def. CHS
+		jr	c,DETECT4
+		ld	bc,(BUFFER+12)			;default sectors
+		ld	a,(BUFFER+6)			;default heads
+		ld	b,a
+		ld	de,251				;16514063 = (16383*16*63)-1
+		ld	hl,64527
+DETECT4	ld	(ix+38),b
+		ld	(ix+39),c
 		ld	a,3
-		ld	(ix+32),a
-		jp	DETECT2
+		jr	DETECTSPL
 	endif	; WITH_CHS
-	
 
 ;je zarizeni pripraveno
 ;a je treba nacist medium?
@@ -2022,6 +2018,13 @@ GETPRMA	ld	hl,READCAP
 		ld	(ix+37),h
 		ret
 
+
+;test symbol shiftu (nc=stisteno)
+SSHIFT	ld	a,127			;stisk SS
+		in	a,(254)
+		rra
+		rra
+		ret
 
 ;umozni uzivateli zadat prvni
 ;sektor iso image
@@ -2157,10 +2160,7 @@ FINDISO
 		ld	bc,(ISOSTART+2)
 		push	ix
 ;pri stisku SS se hleda hned od dalsiho sektoru, jinak az od velikosti soucasneho image
-		ld	a,127
-		in	a,(254)
-		rra
-		rra
+		call	SSHIFT
 		jr	c,FINDISOY
 ;posun za sektor kde se naleza Primary Volume Descriptor
 		ld	ix,16*4+1
@@ -2805,14 +2805,25 @@ DIGIT2	ld	c,'0'
 		rst	16
 		ret
 
+	ifdef WITH_WDC
+;"tiskne" dec cisla do pameti
+STOR16DC	ld	de,10000
+		call	STRDG
+		ld	de,1000
+		call	STRDG
+STOR8DC	ld	de,100
+		call	STRDG
+STOR6DC	ld	de,10
+		jr	STORXX
+	endif
 
 ;"tiskne" hex cisla do pameti
 STOR16HX	ld	de,$1000
 		call	STRDG
 STOR12HX	ld	de,$100
 		call	STRDG
-		ld	de,$10
-		call	STRDG
+STOR8HX	ld	de,$10
+STORXX	call	STRDG
 		ld	e,1
 STRDG	ld	a,'0'-1
 STRDG1	inc	a
@@ -2909,7 +2920,8 @@ PRINTZN
 ;		ld	l,a
 		ld	l,b
 		ld	h,4
-		adc	hl,hl
+;		adc	hl,hl
+		add	hl,hl
 		add	hl,hl
 		add	hl,hl
 		ld	b,7
@@ -3996,23 +4008,93 @@ NENITAP
 		pop	hl
 		jp	nz,NENISNA
 ;obsluha snapu .sna
-		di
-;konfig 128 na 48 (reset stav)
-		ld	a,16+64
+;test delky
+		ld	e,(ix+10)
+		ld	d,(ix+11)
+		ld	a,(ix+12)
+		ld	b,a
+		or	(ix+13)
+		jr	z,SNA48
+		dec	b
+		dec	b
+		jp	nz,NENISNA		;2*64 KB
+		ex	de,hl
+		ld	bc,SNALEN2-131072	;31
+		or	a
+		sbc	hl,bc
+		jr	z,SNA128
+		ld	bc,SNALEN3-SNALEN2	;16384
+		or	a
+		sbc	hl,bc
+		ex	de,hl
+		jp	nz,NENISNA
+;128K SNA
+SNA128
+		call	SNAPINIT
+;preskocime 48K cast
+		ld	bc,SNALEN1
+		call	CASEEK
+		ret	c
+;nasledujici ctyri cteni jedou z cache, nemusi byt test na chybu
+		call	CARDONE			;PC(L)
+		ld	l,a
+		call	CARDONE			;PC(H)
+		ld	h,a
+		ld	(SNAPC),hl
+		call	CARDONE			;port 7FFD
+		ld	(SNAPAGE),a
+		and	7
+		or	64+16			;pro porovnavani
+		ld	c,a
+		call	CARDONE			;trtdos ROM (ignored)
+;nasleduji stranky ve vzestupnem poradi, 2 a 5 vynechane, aktualne pristrankovana taky
+		ld	b,64+16
+SNA128_2
+		ld	a,b
+		cp	64+16+2
+		jr	z,SNA128_3
+		cp	64+16+5
+		jr	z,SNA128_3
+		cp	c
+		jr	z,SNA128_3
 		out	(253),a
-;v ix adresa cele polozky
-		push	ix
-		pop	hl
-;v hl adresa polozky
-		ld	de,7
-		add	hl,de
-		call	CAINIT
-		ld	bc,SNALEN
-		ld	de,SNASTART
-		push	de
+		push	bc
+		ld	de,49152
+		ld	bc,16384
 		call	CAREAD
-		pop	de
-		jp	c,SNAERR
+		pop	bc
+		ret	c
+SNA128_3	inc	b
+		bit	3,b				;uz mame vsechny stranky?
+		jr	z,SNA128_2
+;mame 128K stranky, zbytek nasosnem jako 48K verzi
+		ld	a,(SNAPAGE)
+		or	64
+		out	(253),a
+		call	SNAPINIT2
+		call	SNAALL
+		ret	c
+;onanie s PC ktery uz neni na zasobniku
+		ld	sp,(SNASTART+23)
+		ld	hl,(SNAPC)
+		push	hl
+		ld	(SNASTART+23),sp
+		jr	SNA48_2
+
+;48K SNA
+SNA48	ld	bc,SNALEN1
+		ex	hl,de
+		or	a
+		sbc	hl,bc
+		ex	hl,de
+		jp	nz,NENISNA
+		call	SNAPINIT
+		call	SNAALL
+		ret	c
+SNA48_2
+		ei					;INT sync
+		halt
+		di
 ;vytvor si relativni skok podle
 ;stavu preruseni
 		ld	a,(SNASTART+19)
@@ -4057,6 +4139,14 @@ IMSNA
 		pop	af
 		ld	sp,(SNASTART+23)
 		jp	SNARUN
+
+;nacteni zacatku sna
+SNAALL	ld	bc,SNALEN1
+		ld	de,SNASTART
+		push	de
+		call	CAREAD
+		pop	de
+		ret
 ;konec prace se .sna
 	endif	;WITH_SNA
 
@@ -4071,21 +4161,11 @@ NENISNA
 		pop	hl
 		jp	nz,NENIMFC
 ;obsluha snapu .mfc
-		di
-;konfig 128 na 48 (reset stav)
-		ld	a,16+64
-		out	(253),a
-;v ix adresa cele polozky
-		push	ix
-		pop	hl
-;v hl adresa polozky
-		ld	de,7
-		add	hl,de
-		call	CAINIT
+		call	SNAPINIT
 		ld	bc,MFCHEAD
 		ld	de,MFCSTART
 		call	CAREAD
-		jp	c,SNAERR
+		ret	c
 ;border
 		ld	a,(MFCSTART+5)
 		out	(254),a
@@ -4098,7 +4178,7 @@ NENISNA
 		pop	de
 		ld	bc,49152
 		call	CAREAD
-		jp	c,SNAERR
+		ret	c
 		ld	a,(SNASTART+4)
 		or	a
 		jr	z,MFC48
@@ -4114,7 +4194,7 @@ MFC128	ld	a,(hl)
 		ld	bc,16384
 		call	CAREAD
 		pop	hl
-		jp	c,SNAERR
+		ret	c
 		jr	MFC128
 MFC128_2
 		ld	hl,MFCSTART+37
@@ -4133,6 +4213,9 @@ MFC128_2
 		out	(253),a
 ;dal uz spolecne pro 48 i 128
 MFC48
+		ei					;INT sync
+		halt
+		di
 ;vytvor si relativni skok podle
 ;stavu preruseni
 		ld	a,(MFCSTART+30)
@@ -4196,22 +4279,12 @@ NENIMFC
 		call	STRNCMP
 		jp	nz,VYBERSM
 ;obsluha snapu .z80
-		di
-;konfig 128 na 48 (reset stav)
-		ld	a,16+64
-		out	(253),a
-;v ix adresa cele polozky
-		push	ix
-		pop	hl
-;v hl adresa polozky
-		ld	de,7
-		add	hl,de
-		call	CAINIT
+		call	SNAPINIT
 ;zacatek stejny ve vsech verz.
 		ld	bc,30
 		ld	de,Z80START
 		call	CAREAD
-		jp	c,SNAERR
+		ret	c
 		ld	a,(Z80START+12)
 		inc	a
 		jr	nz,Z80BORD
@@ -4239,22 +4312,20 @@ Z80BORD	dec	a
 		jp	nz,VERS1
 ;nasleduje delka dalsich dat
 		call	CARDONE
-		jp	c,SNAERR
+		ret	c
 		ld	c,a
 		call	CARDONE
-		jp	c,SNAERR
+		ret	c
 		ld	b,a
 ;vsechny je nacti
 		push	bc
 		ld	de,Z80START+32
 		call	CAREAD
-;tady melo byt pop bc, ale je
-;to jedno
-		jp	c,SNAERR
+		pop	bc
+		ret	c
 		rst	24				;call PRINTSP
 		defb	22,11,4,17,0,16,6
 		defb	" Running Z80 ",'v'+128
-		pop	bc
 ;v2.x nebo 3.x+?
 		ld	a,c
 		ld	b,3
@@ -4284,7 +4355,7 @@ K128_2
 		push	bc
 		call	ONEPAGE1
 		pop	bc
-		jr	c,SNAERR
+		ret	c
 		djnz	K128_2
 		jp	RUNZ80
 
@@ -4295,7 +4366,7 @@ K48_2
 		push	bc
 		call	ONEPAGE4
 		pop	bc
-		jr	c,SNAERR
+		ret	c
 		djnz	K48_2
 ;pro 48K ne AY ani stranka
 		jp	JENV1
@@ -4502,7 +4573,7 @@ VERS1
 		jr	V1SPOL
 
 V1PACK	call	DEPV1_1
-V1SPOL	jp	c,SNAERR
+V1SPOL	ret	c
 		jr	JENV1
 
 RUNZ80
@@ -4517,6 +4588,9 @@ RUNZ80
 		or	64
 		out	(253),a
 JENV1
+		ei					;INT sync
+		halt
+		di
 		ld	a,(Z80START+27)
 		or	a
 		ld	hl,EIROM
@@ -4586,7 +4660,23 @@ PC_V1
 		jp	SNARUN
 ;konec prace se .z80
 	endif	;WITH_Z80
-	
+
+;vsechny obsluhy snapu zacinaji stejne
+SNAPINIT	di
+;konfig 128 na 48 (reset stav)
+		ld	a,16+64
+		out	(253),a
+;v ix adresa cele polozky
+SNAPINIT2	push	ix
+		pop	hl
+;v hl adresa polozky
+		ld	de,7
+		add	hl,de
+		call	CAINIT
+;na zasobnik si ulozime SNAERR (chyba ve snapu)
+		ld	hl,SNAERR
+		ex	(sp),hl
+		jp	(hl)		;navrat odkud bylo volano
 
 ;naboucha do AY data z (HL)
 AYSOUND	ld	c,253
@@ -4628,8 +4718,7 @@ NOSIFR	halt
 		ret
 
 
-;vrati v HL a IX adresu souboru
-;v bufferu
+;vrati v HL a IX adresu souboru v bufferu
 ;v DE adresu polozky v indexu
 GETFILE
 		ld	a,(POZICE)
@@ -4706,13 +4795,10 @@ DES2		ld	c,a
 		ret
 
 
-;precte dva za sebou jdouci
-;sektory adresare do bufferu
+;precte dva za sebou jdouci sektory adresare do bufferu
 ;na LBADISK adresa prvniho sec.
-;pokud je adresar dlouhy jen
-;jeden sektor, nactou se nejake
-;blbosti do druheho, ale to
-;nevadi
+;pokud je adresar dlouhy jen jeden sektor, nactou se nejake
+;blbosti do druheho, ale to nevadi
 GETISO1
 		ld	hl,BUFFER
 		ld	de,LBADISK
@@ -4764,8 +4850,7 @@ GETINDSM
 		ld	c,a
 		ld	b,0
 		add	hl,bc
-;tohle tu asi nemusi byt, ale
-;pro jistotu
+;tohle tu asi nemusi byt, ale pro jistotu
 		pop	bc
 		or	a
 		sbc	hl,bc
@@ -4879,8 +4964,8 @@ STATTBL	defw	STAT0,STAT1,STAT2
 		defw	STAT3,STAT4
 
 STAT0	defb	16,2
+		defb	"<not detected",'>'+128
 	ifdef WITH_CHS
-		defb "<CHS ini err.",'>'+128
 STAT1	defb	16,4
 		defb	"<LBA ready>   "
 		defb	16,5+128
@@ -4890,7 +4975,6 @@ STAT1X	defb	16,4
 STATTBL2	defw STAT0,STAT1X,STAT2
 		defw STAT3,STAT4
 	else
-		defb	"<no LBA supp.",'>'+128
 STAT1	defb	16,4
 		defb	"<ready>       "
 		defb	16,5+128
@@ -4904,6 +4988,10 @@ STAT4	defb	16,2
 
 NOTDEV	defb	"not present or device error     "
 		defb	0,0
+
+	ifdef WITH_WDC
+CHSSUCC	defb "CHS translation: "
+	endif
 
 V2XTXT	defb	"2.x",' '+128
 V3XTXT	defb	"3.x+",' '+128
