@@ -418,7 +418,7 @@ PROGRAM2
 		call	PRINTSP
 		defb	22,0,0,19,1,16,3
 		defb	17,0
-		defb	"DEMFIR d0.4b "
+		defb	"DEMFIR d0.4c "
 		defb	16,6
 		defb	"NMI menu  "
 		defb	16,4
@@ -3965,26 +3965,26 @@ JETO2X	call	PRINT128
 		jr	z,K48
 		cp	128
 		jr	z,K48
-K128	ld	hl,128
+K128		ld	hl,128
 		call	Z8048128
 		ld	b,8
 K128_2
+		push	bc
 		call	ONEPAGE1
+		pop	bc
 		jr	c,SNAERR
 		djnz	K128_2
 		jp	RUNZ80
 
-K48	ld	hl,48
+K48		ld	hl,48
 		call	Z8048128
-		ld	hl,32768
+		ld	b,3
+K48_2
+		push	bc
 		call	ONEPAGE4
+		pop	bc
 		jr	c,SNAERR
-;hl,49152
-		call	ONEPAGE4
-		jr	c,SNAERR
-		ld	hl,16384
-		call	ONEPAGE4
-		jr	c,SNAERR
+		djnz	K48_2
 ;pro 48K ne AY ani stranka
 		jp	JENV1
 
@@ -4003,7 +4003,7 @@ SNAERR	in	a,(167)
 		rra
 		rra
 		rra
-		out	(254),a
+SNAERR2	out	(254),a
 		halt
 ;tady to skonci, je di
 
@@ -4018,7 +4018,7 @@ ONEPAGE	call	RDPG
 		cp	8
 		jr	c,GOODPG
 BADPG
-;spatne cislo stranky, vynech
+;spatne cislo stranky, vynech ji
 ;test na kompresi bloku
 		ld	b,d
 		ld	c,e
@@ -4050,10 +4050,21 @@ ONEPAGE1	call	ONEPAGE
 
 ;precte jednu stranku pro 48k
 ;navrat s C kdyz chyba
-ONEPAGE4	push	hl
-		call	ONEPAGE
-		pop	hl
+ONEPAGE4	call	ONEPAGE
 		ret	c
+;nastav HL podle cisla stranky
+		ld	hl,32768
+		dec	a
+		jr	z,Z80RDBK
+		ld	hl,49152
+		dec	a
+		jr	z,Z80RDBK
+		ld	hl,16384
+		cp	3
+;v 48K verzi nesmi byt jine stranky
+;nez 4, 5 a 8 jinak chyba
+		ld	a,1
+		jr	nz,SNAERR2
 ;spolecna cast (48/128)
 ;je blok komprimovan?
 Z80RDBK	inc	de
@@ -4115,7 +4126,7 @@ DEPSM2	ld	(hl),a
 ;navrat s C kdyz chyba
 ;v DE delka bloku
 ;a A cislo stranky
-RDPG	call	CARDONE
+RDPG		call	CARDONE
 		ret	c
 		ld	e,a
 		call	CARDONE
@@ -4200,7 +4211,14 @@ Z80EI	ld	(SNARUN+1),hl
 		pop	de
 		pop	hl
 		exx
+;A a F jsou ulozeny obracene!!!
+;cteni s prohozenim A a F
+		pop	bc
+		dec	sp
 		pop	af
+		dec	sp
+		ld	a,c
+;az sem
 		ex	af,af'
 		pop	iy
 		pop	ix
@@ -4233,7 +4251,14 @@ IMZ80	ld	hl,Z80START+10
 		jr	nz,PC_V1
 		ld	de,(Z80START+32)
 PC_V1
+;A a F jsou ulozeny obracene!!!
+;cteni s prohozenim A a F
+		pop	bc
+		dec	sp
 		pop	af
+		dec	sp
+		ld	a,c
+;az sem
 		pop	bc
 		pop	hl
 		ld	sp,(Z80START+8)
@@ -4344,7 +4369,7 @@ PRLEN
 ;jednotky (kila nebo mega)
 ;>HL vysledek
 ;  C desetiny
-NAKM	xor	a
+NAKM		xor	a
 ;/1024 (/256 /4)
 		ld	l,h
 		ld	h,e
@@ -4355,12 +4380,12 @@ NAKM	xor	a
 		rr	l
 		jr	nc,DES1
 		add	a,2
-DES1	srl	e
+DES1		srl	e
 		rr	h
 		rr	l
 		jr	nc,DES2
 		add	a,5
-DES2	ld	c,a
+DES2		ld	c,a
 		ret
 
 
@@ -4459,7 +4484,7 @@ KURZOR	push	hl
 ;hodnota v A a D
 INKEYS
 		halt
-DOBA	ld	a,(REPPER)
+DOBA		ld	a,(REPPER)
 		dec	a
 		jr	z,DOBA2
 		ld	(REPPER),a
@@ -4585,7 +4610,7 @@ PAGING
 EIROM2	pop	af
 EIROM	ei
 TOBASROM	ret
-		defb	7 dup (0)
+;		defb	7 dup (0)
 
 ;spakovane logo
 LOGO	equ	PAGING-622
