@@ -2317,9 +2317,9 @@ READSEC5
 		ex	de,hl
 		ld	a,c
 		add	hl,hl
-		adc	a,0
+		adc	a,a
 		add	hl,hl
-		adc	a,0
+		adc	a,a
 ;pricti start iso image
 		ld	bc,(ISOSTART)
 		add	hl,bc

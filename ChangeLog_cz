@@ -3,7 +3,15 @@
     * CVS update
     
     * Opraveno:
-    - formát .Z80 má prohozeny registry A a F, zohlednìno 
+    - chyba, diky ktere slo pouzivat pouze prvnich 64 MB z CF/HDD
+
+
+2004-05-26
+    
+    * CVS update
+    
+    * Opraveno:
+    - formát .Z80 má prohozeny registry A a F, zohlednìno
     - pøi naèítání 48K .Z80 snapù je brán ohled na èísla stránek
 
 
