@@ -1,0 +1,4603 @@
+; DEMFIR - DTP's EMulator FIles Runner
+;
+; This program can use some of ZX Spectum emulator files (.sna, .z80, .tap) on
+; real ZX Spectrum with IDE interface. It reads these files from ISO9660
+; filesystem. Snapshots are directly loaded and runned, tap files are emulated
+; like standard tape.
+;
+; Copyright (C) 2000-2004  Lubomir Blaha <tritol(at)trilogic(dot)cz>
+; http://sourceforge.net/projects/demfir/
+;
+; This program is free software; you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation; either version 2 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+; http://www.gnu.org/licenses/gpl.html
+; Cesky neoficialni preklad http://www.gnu.cz/gpl-cz.html
+
+
+		CPU	Z80UNDOC
+		RELAXED	ON
+
+;------------------------------
+; Definice konstant pro HADR
+
+RDATA	equ	163
+RPARAM	equ	167
+RSECPOC	equ	171
+RSEC		equ	175
+RCYLL	equ	179
+RCYLH	equ	183
+RHEAD	equ	187
+RCOM		equ	191
+RSTAT	equ	191
+
+CRESET	equ	$10
+CRESETA	equ	$08
+CREAD	equ	$20
+CWRITE	equ	$30
+CDIAG	equ	$90
+CIDENT	equ	$EC
+CIDENTA	equ	$A1
+CATAPI	equ	$A0
+
+HKONST	equ	160
+
+;------------------------------
+
+;GLOBALNI KONSTANTY
+
+;pocet vterin, po kolika se
+;se nahodi pripadny screensaver
+SSAVER	equ	120
+
+;delka .sna souboru
+SNALEN	equ	49179
+
+;odtud zacina .sna
+SNASTART	equ	16384-27
+;zajimava data z .mfc
+MFCHEAD	equ	55
+;odtud zacina .mfc
+MFCSTART	equ	16384-MFCHEAD
+;odtud zacina .z80
+Z80START	equ	16384-30-25
+
+;promenne pro praci s casem
+;musi byt takhle primo za sebou
+INTCNT	equ	Z80START-1
+SECCNT	equ	INTCNT-1
+;s jakym IDE zarizenim pracovat
+DEVICE	equ	SECCNT-1
+;0=master, 16=slave,
+
+VALIDEV	equ	DEVICE-1
+;0=zarizeni nebyla detekovana
+
+;parametry zarizeni
+MAS_LBA	equ	VALIDEV-4
+;velikost zarizeni v sektorech
+MAS_PRES	equ	MAS_LBA-1
+;0-not present
+MAS_ATAP	equ	MAS_PRES-1
+;0-no lba, 1-atapi, 2-lba ide
+MAS_NAME	equ	MAS_ATAP-32
+
+SLA_LBA	equ	MAS_NAME-4
+SLA_PRES	equ	SLA_LBA-1
+SLA_ATAP	equ	SLA_PRES-1
+SLA_NAME	equ	SLA_ATAP-32
+
+;velikost media a sektoru
+MEDSIZE	equ	SLA_NAME-8
+STATUS	equ	MEDSIZE-1
+;0=unknown (no lba support)
+;1=ready, 2=not ready,
+;3=medium error
+;4=device error
+
+;jmeno media
+DISKNAME	equ	STATUS-32
+;aktualni pozice na mediu
+LBADISK	equ	DISKNAME-3
+
+;barva kurzoru (browser)
+KURCOL	equ	LBADISK-1
+;pozice kurzoru (browser)
+POZICE	equ	KURCOL-1
+;kde v indexu se nachazime
+VYPIS	equ	POZICE-2
+;kde v indexu zacina 2. sektor
+ADR2SEC	equ	VYPIS-2
+;jsou nactena data aktualni
+DISKACT	equ	ADR2SEC-1
+
+;misto pro ukladani sektoru
+;ctenych z cdrom
+CACHE	equ	DISKACT-2048
+;misto pro nacitani sektoru
+;adresare (browser)
+BUFFER	equ	CACHE-4096
+;misto pro odkazy do adresare
+;2*314 polozek + 2 konc. znaky
+INDEX	equ	BUFFER-588
+;delka aktualniho adresare
+;v sektorech (browser)
+DIRLEN	equ	INDEX-2
+;aktulne nacteny sektor adr.
+ACTSDIR	equ	DIRLEN-2
+
+;tapka je aktivni
+TAPACT	equ	ACTSDIR-1
+;jmeno aktualni tapky
+TAPNAME	equ	TAPACT-32
+;celkova delka tapky-pro index
+;musi byt v tomto poradi
+TAPLEN	equ	TAPNAME-4
+;-pro vypis
+TAPLEN2	equ	TAPLEN-4
+;load-cursor
+TAPCURS	equ	TAPLEN2-2
+;pozice kurzoru (backup)
+POZBAK	equ	TAPCURS-1
+;kde v indexu (backup)
+VYPBAK	equ	POZBAK-2
+
+;pozice v cache (lze dopocitat,
+;ale tohle je rychlejsi)
+CACHEKUR	equ	VYPBAK-2
+;aktualne nacteny sektor
+CACHELBA	equ	CACHEKUR-3
+;kolik B z nej je jeste k disp.
+CACHEREM	equ	CACHELBA-2
+;az sem
+
+;aktualni adresa tiskaci rutiny
+;spolecne s instrukci JP
+ACTPRINT	equ	CACHEREM-3
+;aktualni adresa kam psat
+;2. a 3. byte ukazatel do tab.
+;adrvram (radek), prvni byte
+;sloupec
+PRINTPOZ	equ	ACTPRINT-3
+;aktualni atribut
+ACTATTR	equ	PRINTPOZ-1
+;priznak inverze (0=ne,1=ano)
+ATTRINV	equ	ACTATTR-1
+;konstanty pro tisk znaku
+;adresy VRAM (24*2)
+ADRVRAM	equ	ATTRINV-48
+
+;kontrolni soucet ROM, pokud
+;nesedi, inicializace
+ROMCRC	equ	ADRVRAM-2
+
+;relativni LBA zacatek iso img.
+ISOSTART	equ	ROMCRC-4
+
+;misto pro data pri cteni kl.
+REPPER	equ	ISOSTART-1
+LASTKEY	equ	REPPER-1
+
+;buffer pro inphase
+IMPBUFF	equ	LASTKEY-7
+
+;misto pro registry AY
+AYREGS	equ	IMPBUFF-16
+
+;misto pro instrukci jp nn
+;nutne pri spousteni snapu
+SNARUN	equ	AYREGS-3
+
+;misto pro ulozeni zasobniku
+;pred startem mni menu
+ORGSTACK	equ	SNARUN-2
+
+;priznak ze se instaluje font
+FONTINST	equ	ORGSTACK-1
+
+;0=pri stisku nmi bylo im2
+JEIM2	equ	FONTINST-1
+
+;cislo aktivni stranky pri nmi
+;0-7 +8 VRAM +16 ROM
+;+64 pro kratky out +128=48K
+;(zatim nefunkcni)
+ACTPAGE	equ	JEIM2-1
+
+ENDVRS	equ	ACTPAGE
+
+;musi sedet vypocet v PRINTZN
+;zacatek divIDE RAM (L=0)
+FONT		equ	8192
+
+;nmi ma vlastni zasobnik
+;font 768, stack 128
+NMISTACK	equ	FONT+768+128
+
+FREERAM	equ	ENDVRS-NMISTACK
+
+
+;konstanty opakovani klaves
+CON_REP	equ	6
+CON_DEL	equ	36
+
+
+		org	0
+		phase 0
+		di
+		ld	sp,23552
+		jp	RESET
+RST0END
+
+		org	8
+		phase 8
+;rst 8 - error
+;s tim nic delat nebudem
+A0008	ld	hl,($5C5D)
+A0008R	push	hl
+		jr	RST8RET
+RST8END
+
+		org	16
+		phase 16
+;rst 16 - tisk znaku
+		exx
+		call	ACTPRINT
+		exx
+		ret
+RST16END
+
+		org	24
+		phase 24
+;rst 24
+		ret
+RST24END
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;POZOR! rst 32 neni osetreno
+;(nevraci se), NEVOLAT!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;lze pouzit k "simulaci" preruseni
+
+		org	31
+		phase 31
+		nop
+		jr	ROMINT
+RST32END
+
+
+		org	40
+		phase 40
+;rst 40
+		ret
+RST40END
+
+
+		org	48
+		phase 48
+;rst 48
+		ret
+
+RST8RET	ld	hl,A0008R
+CONTEX	ex	(sp),hl
+		jp	TOBASROM
+RST48END
+
+
+;preruseni je potreba
+;zneuzijeme k pocitani casu...
+		org	56
+		phase 56
+
+A0038	defb	24
+A0038R	push	hl
+		ld	hl,A0038R
+		jr	CONTEX
+
+ROMINT	push	af
+		push	hl
+		ld	hl,INTCNT
+		inc	(hl)
+		ld	a,(hl)
+		cp	50
+		jr	nz,INT1
+		ld	(hl),0
+		dec	hl
+		inc	(hl)
+INT1	pop	hl
+		pop	af
+		ei
+		ret
+RST56END
+
+;sem skace depak, aby zjistil,
+;z jake adresy byl zavolan
+		org	82
+		phase 82
+PACKRET
+		ret
+
+;sem se skace pri nmi v divide
+		org	85
+		phase 85
+		ret
+
+		org	102
+		phase 102
+
+;pri stisku nmi se prestrankuje
+;az na adrese 103
+;pri sifrovani tlacitka se ska-
+;ce na 102
+
+		defb	24
+PROGRAM
+;vsechno pouzite uschovej
+;(push af jeste z puvodni ROM)
+;stav prerus. (obsah R ztracen)
+		ld	a,i
+		ld	(ORGSTACK),sp
+		ld	sp,NMISTACK
+		push	af
+		push	hl
+		push	de
+		push	bc
+		push	ix
+		exx
+		push	hl
+		push	de
+		push	bc
+		ex	af,af'
+		push	af
+;umlceni ay
+		call	AYSILEN
+;uloz screen do banky 1
+		ld	a,1
+		out	(227),a
+		ld	(16382),sp
+		ld	sp,16382
+		ld	hl,16384
+		ld	de,8192
+		ld	bc,6912
+		ldir
+;test modu preruseni
+;v DE je 15104 (59*256)
+		ld	h,d
+		ld	l,e
+		inc	de
+		inc	b
+;v BC je 256
+		ld	(hl),60
+		ldir
+;ld hl,xx
+		defb	33
+		xor	a
+		ret
+		ld	(15420),hl
+;15420=60*256+60
+		ld	a,59
+		ld	i,a
+		ei
+		halt
+		di
+		im	1
+		ld	b,a
+		ld	sp,(16382)
+		xor	a
+		out	(227),a
+		ld	a,b
+		ld	(JEIM2),a
+PROGRAM2
+;zakaz preruseni (mohlo byt
+;povoleno nekde dal a sem se
+;to vzdycky vraci)
+		di
+;vynulovani promennych
+		xor	a
+		ld	(INTCNT),a
+		ld	(SECCNT),a
+		out	(254),a
+		ld	a,36
+		ld	(REPPER),a
+		call	PRINTINI
+		call	CLS
+		xor	a
+		call	ATRIB
+		call	LOGO
+		call	PRINTSP
+		defb	22,0,0,19,1,16,3
+		defb	17,0
+		defb	"DEMFIR d0.4b "
+		defb	16,6
+		defb	"NMI menu  "
+		defb	16,4
+		defb	"2004 DT",'P'+128
+
+INITDEV
+		ld	a,(VALIDEV)
+		or	a
+		jp	nz,INITD2
+		call	PRINTSP
+		defb	22,18,0,18,1,16,2
+		defb	" Detecting devi"
+		defb	"ces, please wai"
+		defb	"t",32,18,128
+		xor	a
+		ld	ix,MAS_NAME
+		call	DETECT
+		ld	a,16
+		ld	(VALIDEV),a
+		ld	ix,SLA_NAME
+		call	DETECT
+;tesne po detekci nektera zar.
+;neodpovidaji na cteni
+		ei
+		call	NOSIFR
+		di
+		call	PRINTSP
+		defb	22,18,128
+		call	SPACES
+		xor	a
+NEWMED2	ld	(DEVICE),a
+NEWMED	ld	hl,0
+		ld	(ISOSTART+2),hl
+		ld	(ISOSTART),hl
+NEWMED3	xor	a
+		ld	(DISKNAME),a
+		ld	(TAPACT),a
+		ld	(DISKACT),a
+		ld	(SECCNT),a
+;smaz radek "medium"
+		call	PRINTSP
+		defb	22,20,128
+		call	SPACES
+INITD2
+		call	PRINTSP
+		defb	16,6
+		defb	22,18,0
+		defb	20,1,"D",20
+		defb	0
+		defb	"evice:",' '+128
+		ld	a,(DEVICE)
+		or	HKONST
+		out	(RHEAD),a
+;active master/slave
+		and	16
+		ld	ix,MAS_NAME
+		ld	hl,MASTER
+		jr	z,INITD3
+		ld	ix,SLA_NAME
+		ld	hl,SLAVE
+INITD3
+		call	PRINT128
+		call	GETREADY
+		ld	a,6
+		rst	16
+		ld	a,(STATUS)
+		add	a,a
+		ld	e,a
+		ld	d,0
+		ld	hl,STATTBL
+		add	hl,de
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		call	PRINT128
+		ld	a,13
+		rst	16
+		push	ix
+		pop	hl
+		ld	b,32
+		call	PRINTB
+		call	PRINTSP
+		defb	16,6
+		defb	13,20,1,"M",20,0
+		defb	"edium: "
+		defb	16,3+128
+		ld	a,(TAPACT)
+		or	a
+		jr	z,MEDNOTP
+		ld	hl,(TAPLEN2)
+		ld	de,(TAPLEN2+2)
+		call	TISKSIZE
+		call	PRINTSP
+		defb	13,16,5+128
+		ld	hl,TAPNAME
+		jp	SPOLMED2
+
+MEDNOTP
+		call	GETPARAM
+		call	GETPVD
+		ld	a,(DISKNAME)
+		or	a
+		jr	nz,JEMEDIUM
+		call	PRINTSP
+		defb	6,16,2
+		defb	"<no ISO 9660>  "
+		defb	13+128
+		call	SPACES
+		jr	SPOLMED
+
+JEMEDIUM
+;velikost media (vzdy 2048x)
+		ld	hl,(MEDSIZE+2)
+		ld	de,(MEDSIZE)
+;nasob 256x 8x (dohromady 2048)
+		ld	d,e
+		ld	e,h
+		ld	h,l
+		ld	l,0
+		add	hl,hl
+		ex	de,hl
+		adc	hl,hl
+		ex	de,hl
+		add	hl,hl
+		ex	de,hl
+		adc	hl,hl
+		ex	de,hl
+		add	hl,hl
+		ex	de,hl
+		adc	hl,hl
+		ex	de,hl
+		call	TISKSIZE
+		call	PRINTSP
+		defb	22,20,16,16,4+128
+		ld	a,(MEDSIZE+7)
+		cp	3
+		jr	c,EMULMED
+;cdrom
+		call	PRINTSP
+		defb	16,4
+		defb	"<real CD-ROM> ",' '+128
+		jr	SPOLMED3
+
+EMULMED	call	LBAS
+SPOLMED3	call	PRINTSP
+		defb	16,5,13+128
+		ld	hl,DISKNAME
+SPOLMED2	ld	b,32
+		call	PRINTB
+SPOLMED
+		call	PRINTSP
+		defb	16,6,22,23,0
+		defb	20,1,"R",20,0
+		defb	"es"
+		defb	20,1,"I",20,0
+		defb	"nit"
+		defb	20,1,"Q",20,0
+		defb	"uit"
+		defb	20,1,"F",20,0
+		defb	"ind"
+		defb	20,1,"S",20,0
+		defb	"ec"
+		defb	20,1,"E",20,0
+		defb	"jct"
+		defb	20,1
+		defb	"Ent"
+		defb	20,128
+
+		ei
+NMIKEYS
+		halt
+		ld	a,(SECCNT)
+		cp	SSAVER
+		jr	nz,NMIK2
+		call	DEMFSS
+		jp	PROGRAM2
+
+NMIK2	call	KEYSCAN
+		jr	nz,NMIKEYS
+		ld	a,e
+		inc	a
+		jr	z,NMIKEYS
+;shifty nepotrebujem
+		ld	hl,KEYSTAB
+		ld	d,0
+		add	hl,de
+		ld	d,(hl)
+		ld	hl,NMIPROG
+NMIK4	ld	a,(hl)
+		or	a
+		jr	z,NMIKEYS
+		cp	d
+		inc	hl
+		jr	z,NMIK3
+		inc	hl
+		inc	hl
+		jr	NMIK4
+
+NMIK3	ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		jp	(hl)
+
+NMIPROG	defb	"Q"
+		defw	QUIT
+		defb	"E"
+		defw	EJMED
+		defb	"R"
+		defw	0
+		defb	"M"
+		defw	MEDIUM
+		defb	"D"
+		defw	CHDEV
+		defb	"I"
+		defw	DEMINT
+		defb	"F"
+		defw	FINDIMG
+		defb	"S"
+		defw	SECTIMP
+		defb	13
+		defw	ENTBROWS
+		defb	0
+
+
+EJMED
+;vystreleni media :)
+		ld	a,(ix+32)
+		or	a
+		jr	z,EJNOATA
+		cp	2
+		jr	z,NOENT
+		ld	hl,EJECT
+		call	ATAPICOM
+		call	NOSIFR
+		jp	NEWMED
+
+EJNOATA	ld	hl,18*32+22528+16
+		ld	bc,13
+		push	hl
+		push	bc
+		ld	a,2+64+128
+		call	FILLBYTE
+		ld	b,100
+EJNA2	halt
+		djnz	EJNA2
+		pop	bc
+		pop	hl
+		ld	a,2+64
+		call	FILLBYTE
+		jp	NMIKEYS
+
+MEDIUM
+;znovunacteni media
+		ld	a,(ix+33)
+		or	a
+		jr	z,EJNOATA
+		call	NOSIFR
+		jp	NEWMED
+
+FINDIMG
+;find image
+		ld	hl,FINDISO
+		jr	SPOLISO
+
+SECTIMP
+;sector (inphase)
+		ld	hl,INPUTSEC
+SPOLISO	ld	a,(ix+33)
+		or	a
+		jr	z,EJNOATA
+		ld	a,(MEDSIZE+7)
+		cp	3
+		jr	nc,NOENT
+		ld	de,NEWMED3
+		push	de
+		jp	(hl)
+
+ENTBROWS
+;browse medium
+		ld	a,(DISKNAME)
+		or	a
+		jr	z,NOENT
+		call	CDBROWS
+		jp	PROGRAM2
+
+NOENT	ld	hl,20*32+22528+16
+		ld	bc,15
+		push	hl
+		push	bc
+		ld	a,2+64+128
+		call	FILLBYTE
+		ld	b,90
+NOENT2	halt
+		djnz	NOENT2
+		pop	bc
+		pop	hl
+		ld	a,2+64
+		call	FILLBYTE
+		jp	NMIKEYS
+
+
+;precte BC bajtu od posledniho
+;mista na adresu DE
+;CARRY error
+;DE ukazuje za nacteny blok
+;(vzdycky???)
+CAREAD
+		ld	hl,(CACHEREM)
+		ld	a,l
+		or	h
+		jr	z,CARD2
+		or	a
+		sbc	hl,bc
+		jr	z,CARD1
+		jr	c,CARD1
+;jen prenes data
+		ld	(CACHEREM),hl
+		ld	hl,(CACHEKUR)
+		ldir
+		ld	(CACHEKUR),hl
+		or	a
+		ret
+
+CARD1
+		add	hl,bc
+;zbytek z cache prenes na poza-
+;dovane misto
+		push	bc
+		push	hl
+		ld	b,h
+		ld	c,l
+		ld	hl,(CACHEKUR)
+		ldir
+;neni potreba ukladat pozici
+		pop	hl
+		pop	bc
+;v BC celkova pozadovana delka
+;v HL kolik uz se preneslo ze
+;zbytku cache (obracene kuli
+;skoku)
+CARD2
+		push	de
+		ld	e,l
+		ld	d,h
+		ld	l,c
+		ld	h,b
+;odecteni prenesene casti
+		or	a
+		sbc	hl,de
+;konec jestli prenesl vsechno
+		pop	de
+		jp	z,CAINIT2
+		push	de
+;zjisti pocet sektoru (/2048)
+		ld	a,h
+		srl	a
+		srl	a
+		srl	a
+		jr	z,CARD3
+;budem cist vice sektoru naraz
+		pop	de
+;v DE kam nacist
+;v HL zbyvajici pozad. delka
+		ex	de,hl
+		push	de
+		push	af
+		ld	de,CACHELBA
+		call	READSEC
+;tady by to chtelo test CARRY
+		pop	af
+		pop	de
+		push	hl
+		ld	c,a
+		ld	b,0
+		call	ADDLBA
+		ld	a,c
+		add	a,a
+		add	a,a
+		add	a,a
+		ld	b,a
+		ld	c,0
+;v BC je prave nactena delka
+;v DE zbyvajici pozad. delka
+		ex	de,hl
+		or	a
+		sbc	hl,bc
+		jp	z,CAINIT2
+;v HL kolik jeste prenest
+CARD3
+		push	hl
+		ld	hl,CACHE
+		push	hl
+		ld	de,CACHELBA
+		call	READ1SEC
+		pop	hl
+		pop	bc
+		pop	de
+;DE kam
+;BC kolik
+;v HL odkud
+		ret	c
+		ldir
+;uloz ukazatele
+		ld	(CACHEKUR),hl
+		ld	b,h
+		ld	c,l
+		ld	hl,CACHE+2048
+		or	a
+		sbc	hl,bc
+		ld	(CACHEREM),hl
+;posun se na dalsi sektor
+		ld	bc,1
+		call	ADDLBA
+		or	a
+		ret
+
+
+;preskoci BC bajtu od posled.
+;mista
+CASEEK
+		ld	hl,(CACHEREM)
+		ld	a,l
+		or	h
+		jr	z,CASK2
+		or	a
+		sbc	hl,bc
+		jr	z,CASK1
+		jr	c,CASK1
+		ld	(CACHEREM),hl
+		ld	hl,(CACHEKUR)
+		add	hl,bc
+		ld	(CACHEKUR),hl
+		or	a
+		ret
+
+CASK1
+		add	hl,bc
+;v BC celkova pozadovana delka
+;v HL kolik uz se preskocilo ze
+;zbytku cache (obracene kuli
+;skoku)
+CASK2
+		ld	e,l
+		ld	d,h
+		ld	l,c
+		ld	h,b
+;odecteni prenesene casti
+		or	a
+		sbc	hl,de
+;konec jestli preskocil vsechno
+		jp	z,CAINIT2
+;zjisti pocet sektoru (/2048)
+		ld	a,h
+		srl	a
+		srl	a
+		srl	a
+		jr	z,CASK3
+;budem skakat vic sektoru naraz
+;v HL zbyvajici pozad. delka
+		ex	de,hl
+		ld	c,a
+		ld	b,0
+		call	ADDLBA
+		ld	a,c
+		add	a,a
+		add	a,a
+		add	a,a
+		ld	b,a
+		ld	c,0
+;v BC je prave preskocena delka
+;v DE zbyvajici pozad. delka
+		ex	de,hl
+		or	a
+		sbc	hl,bc
+		jp	z,CAINIT2
+;v HL kolik jeste preskocit
+CASK3
+		push	hl
+		ld	hl,CACHE
+		ld	de,CACHELBA
+		call	READ1SEC
+		pop	bc
+;BC kolik
+		ret	c
+		ld	hl,CACHE
+		add	hl,bc
+		ld	(CACHEKUR),hl
+		ld	hl,2048
+		or	a
+		sbc	hl,bc
+		ld	(CACHEREM),hl
+;posun se na dalsi sektor
+		ld	bc,1
+		call	ADDLBA
+		or	a
+		ret
+
+
+CARDONE2	dec	de
+;vrati v A dalsi byte z cache
+;prevraci banky registru!
+;C chyba (zustanou ' reg)
+CARDONE
+		exx
+		ld	hl,(CACHEREM)
+		ld	a,h
+		or	l
+		jr	z,CARDO1
+		dec	hl
+		ld	(CACHEREM),hl
+		ld	hl,(CACHEKUR)
+CARDO2	ld	a,(hl)
+		inc	hl
+		ld	(CACHEKUR),hl
+		or	a
+		exx
+		ret
+
+CARDO1
+		ld	hl,CACHE
+		ld	de,CACHELBA
+		call	READ1SEC
+		ret	c
+		ld	bc,1
+		call	ADDLBA
+		ld	hl,2047
+		ld	(CACHEREM),hl
+		ld	hl,CACHE
+		jr	CARDO2
+
+
+BEF_SVB
+
+
+;odchyceni save (jen pokracuje
+;zpet v ZX ROM)
+;debug
+		org	$4C6
+		phase $4C6
+;/debug
+
+GAP_SVB	equ	$-BEF_SVB
+
+		ld	hl,$1F80
+;z puvodni ROM
+		push	hl
+		ld	hl,$4C6+3
+		ex	(sp),hl
+		jp	TOBASROM
+
+;konec odchyceni save
+
+
+;odecte od LBA (ukaz. v HL)
+;cislo v reg. BC
+SUBLBA2	push	de
+		ld	a,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	e,(hl)
+		ex	de,hl
+		or	a
+		sbc	hl,bc
+		sbc	a,0
+		ex	de,hl
+		ld	(hl),e
+		dec	hl
+		ld	(hl),d
+		dec	hl
+		ld	(hl),a
+		pop	de
+		ret
+
+;detekce zarizeni
+TSTATAPI
+		ld	a,CIDENTA
+		out	(RCOM),a
+		ld	hl,BUFFER
+		ld	bc,RDATA
+		call	IDE_DTRD
+		ret	c
+		inir
+		inir
+;test konce operace
+		call	IDE_DRRD
+		ret	c
+		ld	a,1
+		ld	(ix+32),a
+		jr	DETECT2
+
+DETECT
+		ld	(DEVICE),a
+		or	HKONST
+		out	(RHEAD),a
+;active master/slave
+
+;inicializace prostoru
+		push	ix
+		pop	de
+		ld	hl,NOTDEV
+		ld	bc,34
+		ldir
+
+		ld	a,CIDENT
+		out	(RCOM),a
+		ld	hl,BUFFER
+		ld	bc,RDATA
+		call	IDE_DTRD
+		jr	c,TSTATAPI
+		inir
+		inir
+;test konce operace
+		call	IDE_DRRD
+		ret	c
+;podporuje ide zarizeni LBA?
+		ld	a,(BUFFER+99)
+		bit	1,a
+		jr	z,DETECT2
+;podporuje, berem
+		ld	a,2
+		ld	(ix+32),a
+;uloz si velikost disku
+		ld	hl,(BUFFER+120)
+		ld	(ix+34),l
+		ld	(ix+35),h
+		ld	hl,(BUFFER+122)
+		ld	(ix+36),l
+		ld	(ix+37),h
+DETECT2
+		push	ix
+		pop	de
+		ld	hl,BUFFER+54
+		ld	bc,32
+		call	PROHOD
+		ldir
+		inc	de
+		ld	a,255
+		ld	(de),a
+		ret
+
+
+BEF_LDB
+
+;tape emulator
+
+;debug
+		org	$562
+		phase $562
+;/debug
+
+GAP_LDB	equ	$-BEF_LDB
+
+LD_BYTES	in	a,($FE)
+;z originalni ROM
+		ld	a,(TAPACT)
+		or	a
+		jr	nz,TPEMUL
+;neni vybrana zadna tapka
+;vrat se do normalniho ld-bytes
+		ld	hl,LD_BYTES+2
+		push	hl
+		in	a,($FE)
+		jp	TOBASROM
+
+TPEMUL
+;sice by melo byt, pro jistotu
+		di
+;test na verify
+		ex	af,af'
+		jr	c,TPEML3
+		add	ix,de
+		ld	de,0
+;verify OK
+		scf
+		jp	TOBASROM
+TPEML3
+		ex	af,af'
+;break
+		ld	a,127
+		in	a,(254)
+		rra
+		jp	nc,TOBASROM
+		ld	hl,(TAPCURS)
+TPEML2
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		inc	hl
+		ld	a,b
+		or	c
+		jr	nz,TPEML1
+;konec tapky, "previn pasek"
+		ld	hl,INDEX+4
+		jr	TPEML2
+TPEML1	ld	(TAPCURS),hl
+		ld	l,c
+		ld	h,b
+;test flagu
+		ex	af,af'
+		cp	(hl)
+		jr	nz,TPEML3
+		inc	hl
+;test delky
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		inc	hl
+		ex	de,hl
+		or	a
+		sbc	hl,bc
+		add	hl,bc
+		ex	de,hl
+		jr	nz,TPEML3
+;flag i delka souhlasi, sosame
+		ld	bc,17
+		or	a
+		jr	nz,TPTELO
+		ex	de,hl
+		sbc	hl,bc
+		add	hl,bc
+		ex	de,hl
+		jr	nz,TPTELO
+;prenes hlavicku
+		push	ix
+		pop	de
+		call	SELFPROT
+		jr	c,TPSPOL
+		ldir
+		jr	TPSPOL
+
+TPTELO
+		push	ix
+		push	de
+		push	hl
+		call	CAINIT
+;zjisteni stavu zarizeni
+;(vzpamatovani po resetu)
+		ld	a,(DEVICE)
+		and	16
+		ld	ix,MAS_NAME
+		jr	z,TPTELOX
+		ld	ix,SLA_NAME
+TPTELOX	call	GETREADY
+		pop	hl
+		inc	hl
+		inc	hl
+		inc	hl
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		call	CASEEK
+		pop	bc
+		pop	de
+;chyba pri cteni
+		jr	c,TPSPOL
+		ld	hl,0
+		call	SELFPROT
+		jr	c,TPSPOL
+		ld	a,l
+		or	h
+		jr	z,NOCORR
+;byla korekce adresy, musime
+;se posunout v souboru
+		push	bc
+		push	de
+		ld	b,h
+		ld	c,l
+		call	CASEEK
+		pop	de
+		pop	bc
+		jr	c,TPSPOL
+NOCORR
+		call	CAREAD
+;schovej si uspesnost cteni
+TPSPOL	push	af
+		push	de
+;tady test na konec tapky znovu
+;jinak se ztraci kurzor na
+;konci tapky (pri vypisu)
+		ld	hl,(TAPCURS)
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		or	h
+		jr	nz,TPSPOL2
+;konec tapky, "previn pasek"
+		ld	hl,INDEX+4
+		ld	(TAPCURS),hl
+TPSPOL2
+;korekce spravnych load hodnot
+		ld	de,0
+		pop	ix
+		pop	af
+		ccf
+		jp	TOBASROM
+
+;Zjisti, jestli pozadovany blok
+;neprepise cast ROM. Pokud jde,
+;oprav registry, pokud uplne
+;mimo, navrat s C.
+SELFPROT
+		push	hl
+		ex	de,hl
+		ld	de,16384
+		or	a
+		sbc	hl,de
+		jr	nc,SEPR2
+		add	hl,bc
+;jsi uplne mimo, navrat
+;na HL a DE nezalezi
+		jr	nc,SEPR3
+		ld	d,b
+		ld	e,c
+		ex	de,hl
+		ld	c,e
+		ld	b,d
+		or	a
+		sbc	hl,de
+		pop	de
+		add	hl,de
+		ld	de,16384
+;NC od ADD (doufam)
+		ret
+
+SEPR2
+		add	hl,de
+		ex	de,hl
+		scf
+SEPR3
+		ccf
+		pop	hl
+		ret
+
+;konec tape emulatoru
+
+
+;obsluha dalsich klaves nmimenu
+CHDEV
+;change device (master/slave)
+		call	NOSIFR
+		ld	a,(DEVICE)
+		xor	16
+		jp	NEWMED2
+
+DEMINT
+;init demfir (detect devices)
+		xor	a
+		ld	(VALIDEV),a
+		jp	PROGRAM2
+
+QUIT
+;navrat z nmi
+;obnoveni puvodni obrazovky
+		ld	a,1
+		out	(227),a
+		ld	hl,8192
+		ld	de,16384
+		ld	bc,6912
+		ldir
+		xor	a
+		out	(227),a
+		call	GUESBORD
+		call	NOSIFR
+		di
+;obnoveni registru AY
+		ld	hl,AYREGS
+		call	AYSOUND
+;vynucena druha VRAM?
+;		ld	a,(ACTPAGE)
+;		bit	7,a
+;		jr	nz,TSTIM2
+;		bit	3,a
+;		jr	z,TSTIM2
+;		out	(253),a
+;bylo im2?
+TSTIM2	ld	a,(JEIM2)
+		or	a
+		jr	nz,NEIM2
+		im	2
+NEIM2	pop	af
+		ex	af,af'
+		pop	bc
+		pop	de
+		pop	hl
+		exx
+		pop	ix
+		pop	bc
+		pop	de
+		pop	hl
+		pop	af
+		ld	sp,(ORGSTACK)
+		ld	i,a
+;bylo povolene preruseni?
+		jp	pe,EIROM2
+		pop	af
+;zakazane preruseni
+		jp	TOBASROM
+
+
+;pricte k LBA cache
+;cislo v reg. BC
+ADDLBA	ld	hl,CACHELBA
+ADDLBA2	push	de
+		ld	a,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	e,(hl)
+		ex	de,hl
+		add	hl,bc
+		adc	a,0
+		ex	de,hl
+		ld	(hl),e
+		dec	hl
+		ld	(hl),d
+		dec	hl
+		ld	(hl),a
+		pop	de
+		ret
+
+;inicializace cache
+;HL ukazatel na LBA zacatku
+CAINIT
+		ld	de,CACHELBA
+		ld	bc,3
+		ldir
+CAINIT2	ld	hl,0
+		ld	(CACHEREM),hl
+		ld	hl,CACHE
+		ld	(CACHEKUR),hl
+		or	a
+		ret
+
+;vytiskne 32 mezer
+SPACES	ld	b,32
+SPACES1	ld	a,32
+		rst	16
+		djnz	SPACES1
+		ret
+
+;porovna 2 retezce (DE a HL)
+;v delce B bytu
+;znaky z DE jsou prevedeny
+;na mala pismena
+;navrat NZ-nerovnaji se
+;Z-rovnaji se
+STRNCMP	ld	a,(de)
+		or	32
+		cp	(hl)
+		ret	nz
+		inc	hl
+		inc	de
+		djnz	STRNCMP
+		ret
+
+;zjisti stav zarizeni
+GETREADY
+		ld	a,(ix+33)
+		or	a
+		call	nz,GETRDY2
+		ld	(STATUS),a
+		dec	a
+		ret	z
+;chyba, zrus medium
+		xor	a
+		ld	(DISKNAME),a
+		ret
+
+GETRDY2
+		ld	a,(ix+32)
+		or	a
+		ret	z
+;a=0 - no lba
+		dec	a
+		ret	nz
+;a=1 - ready ide lba device
+
+;pokus o odliseni hw resetu od
+;vymeny media; selze pri vymene
+;media s resetem
+		in	a,(RSTAT)
+		push	af
+		ld	hl,TUREADY
+		call	ATAPICOM
+		pop	de
+;test chyby by "zabral" i pokud
+;neni medium, coz nechceme...
+		ld	a,1
+;a=1 - ready
+		ret	nc
+		ld	a,c
+		rrca
+		rrca
+		rrca
+		rrca
+		and	%00001111
+		cp	2
+		ret	z
+;a=2 - not ready
+		cp	3
+		ret	z
+;a=3 - medium error
+		cp	6
+		ld	a,4
+		ret	nz
+;a=4 - device error
+;vymenene medium, znovu nacti
+;ale pouze pokud to nebyl reset
+		ld	a,d
+		or	a
+		ld	a,1
+;a=1 - ready
+		ret	z
+		xor	a
+		ld	(DISKNAME),a
+		ld	(DISKACT),a
+		inc	a
+;a=1 - ready
+		ret
+
+;sem to skace po resetu
+;prvni je test, jestli se
+;instaloval font
+RESET	ld	hl,FONTINST
+		ld	a,(hl)
+		ld	(hl),0
+;magic
+		cp	%11010110
+		jr	z,CRCOK
+		call	CLS
+		xor	a
+		out	(254),a
+		call	ATRIB
+		call	LOGO
+
+;48K BASIC se strankovanim 128K
+;i pro +2A/+3
+;(aby bylo odkud prenest font)
+		ld	bc,8189
+		ld	a,4
+		out	(c),a
+		ld	a,16+64
+		out	(253),a
+
+;spocitame crc rom (demfiru)
+;kdyz nesedi, bud nova verze
+;rom nebo spatna data v ram
+		xor	a
+		out	(227),a
+;BANK0
+		ld	hl,0
+		ld	bc,8192
+		call	CNTCRC
+		ex	de,hl
+		ld	hl,(ROMCRC)
+		or	a
+		sbc	hl,de
+		jr	nz,CRCBAD
+CRCOK	ld	hl,1
+		push	hl
+		jp	TOBASROM
+CRCBAD
+		push	de
+		ld	hl,8192
+		ld	d,h
+		ld	e,l
+		ld	b,h
+		ld	c,l
+		inc	de
+		dec	bc
+		ld	(hl),0
+		ldir
+		pop	hl
+		ld	(ROMCRC),hl
+;instrukce JP pro snapy
+		ld	a,195
+		ld	(SNARUN),a
+;priznak-instaluji font
+		ld	a,%11010110
+		ld	(FONTINST),a
+;je treba prenest font, na to
+;se musi pristrankovat ZXROM
+		ld	hl,INSTRT
+		ld	de,16384+4096
+		push	de
+		ld	bc,ENDINST-INSTRT
+		ldir
+;pokracuj na prenesene rutine
+		jp	TOBASROM
+
+INSTRT	ld	hl,15616
+;prenasime hned za rutinku
+		ld	bc,768
+		push	bc
+		push	de
+		ldir
+		call	$1FFB
+;CONMEM + BANK0
+		ld	a,128
+		out	(227),a
+		pop	hl
+		pop	bc
+		ld	de,8192
+		ldir
+;BANK0
+		xor	a
+		out	(227),a
+;a znova reset
+		rst	0
+ENDINST
+
+
+;odhad barvy borderu podle atr.
+;v levem hornim rohu obrazovky
+GUESBORD	ld	a,(22528)
+		rra
+		rra
+		rra
+		and	7
+		out	(254),a
+		ret
+
+;smazani obrazovky
+CLS	push	hl
+		push	de
+		ld	hl,16384
+		ld	bc,6911
+		xor	a
+		call	FILLBYTE
+		pop	de
+		pop	hl
+		ret
+
+;vyplneni atributu obs. reg. A
+ATRIB	ld	hl,22528
+		ld	bc,767
+FILLBYTE	ld	(hl),a
+		ld	d,h
+		ld	e,l
+		inc	de
+		ldir
+		ret
+
+;tiskaci podprogramy
+PRINTSP	pop	hl
+		call	PRINT128
+		jp	(hl)
+
+PRINT128	ld	a,(hl)
+		and	127
+		rst	16
+		ld	a,(hl)
+		inc	hl
+		and	128
+		jr	z,PRINT128
+		ret
+
+PRINTB	ld	a,(hl)
+		cp	32
+		call	c,PRB1
+		cp	128+1
+		call	nc,PRB1
+		rst	16
+		inc	hl
+		djnz	PRINTB
+		ret
+PRB1	ld	a,'?'
+		ret
+
+
+DELENI42
+;HLH'L' / BC
+;>DE vysledek
+; H'L' zbytek
+		ld	de,$0001
+		exx
+		ld	bc,0
+		exx
+DELENI1
+;		or	a
+;		rr	b
+;proc je todle vynechany?
+		srl	b
+		rr	c
+		exx
+		rr	b
+		rr	c
+		sbc	hl,bc
+		exx
+		sbc	hl,bc
+		jr	nc,DELENI2
+		exx
+		add	hl,bc
+		exx
+		adc	hl,bc
+DELENI2
+		ccf
+		rl	e
+		rl	d
+		jr	nc,DELENI1
+		ret
+
+DELENI21
+;> HL:D=C, zbytek L
+		ld	c,1
+		ld	e,0
+DELENI3
+		srl	d
+		rr	e
+		sbc	hl,de
+		jr	nc,DELENI4
+		add	hl,de
+DELENI4
+		ccf
+		rl	c
+		jr	nc,DELENI3
+		ret
+
+;pricte k BCDE HLIX
+ADD3232	add	ix,de
+		ld	e,ixl
+		ld	d,ixu
+		adc	hl,bc
+		ld	c,l
+		ld	b,h
+		ret
+
+
+;spocita CRC bloku
+;< HL - adresa zacatku paketu
+;< BC - delka bloku
+;> HL - spocitane crc
+;meni BC,HL,AF
+;umi pocitat CRC podle ruznych
+;polynomu, zalezi na konstant.
+CNTCRC	ex	de,hl
+		ld	hl,0
+DCTCRC2	ld	a,h
+		and	POLYMASK
+		push	af
+		add	hl,hl
+		ld	a,(de)
+		inc	de
+		add	a,l
+		ld	l,a
+		pop	af
+		jr	z,DCTCRC3
+		ld	a,h
+		xor	POLYHI
+		ld	h,a
+		ld	a,l
+		xor	POLYLO
+		ld	l,a
+DCTCRC3	dec	bc
+		ld	a,b
+		or	c
+		jr	nz,DCTCRC2
+		ret
+
+;konstanty pro polynom
+;x16+x15+x2+1 (CRC16)
+POLYMASK	equ	128
+POLYHI	equ	$80
+POLYLO	equ	$05
+
+
+;screen saver (blank only)
+DEMFSS	call	CLS
+SSWTK	xor	a
+		in	a,(254)
+		cpl
+		and	31
+		jr	z,SSWTK
+		ret
+
+;je zarizeni pripraveno
+;a je treba nacist medium?
+;nz=ne, z=ano
+RDYCHNG	ld	a,(STATUS)
+		dec	a
+		ret	nz
+		ld	a,(DISKNAME)
+		or	a
+		ret
+
+;zjisti velikost sektoru
+GETPARAM
+		call	RDYCHNG
+		ret	nz
+;nacti velikost media
+		ld	hl,MEDSIZE
+		ld	bc,7
+		xor	a
+		call	FILLBYTE
+		ld	a,(ix+32)
+		dec	a
+		jr	z,GETPRMA
+;pro ide naplnime rucne
+		ld	hl,512
+		ld	(MEDSIZE+6),hl
+		ret
+
+;zjisteni velikosti media
+;(nasledne bude prepsano
+;hodnotou z image)
+;ale jeste predtim ulozeno
+;k drivu
+;a velikost sektoru
+GETPRMA	ld	hl,READCAP
+		call	ATAPICOM
+		ret	c
+		ld	hl,MEDSIZE
+		push	hl
+		call	READCD
+		pop	hl
+		ret	c
+;uprav cisla na little endian
+;(pouze po 16 bitech !!!)
+		ld	b,8
+		call	PROHOD
+;uloz si velikost disku
+		ld	hl,(MEDSIZE+2)
+		ld	(ix+34),l
+		ld	(ix+35),h
+		ld	hl,(MEDSIZE)
+		ld	(ix+36),l
+		ld	(ix+37),h
+		ret
+
+
+;umozni uzivateli zadat prvni
+;sektor iso image
+INPUTSEC
+		call	PRINTSP
+		defb	22,20,16,16,7+128
+		call	LBAS
+		push	ix
+		ld	ix,IMPBUFF
+		ld	hl,(ISOSTART+2)
+		call	STOR12HX
+		ld	hl,(ISOSTART)
+		call	STOR16HX
+		pop	ix
+INPUTAG
+		ld	b,7
+		ld	de,20*32+22528+22
+		ld	hl,IMPBUFF+6
+INPUTSC2
+		push	hl
+		ld	c,b
+		call	PRINTSP
+		defb	22,20,16+128
+		ld	b,7
+		ld	hl,IMPBUFF
+		call	PRINTB
+		ld	b,c
+		pop	hl
+		ex	de,hl
+		ld	(hl),8*4+64
+		ex	de,hl
+INPUTSC3
+		push	hl
+		push	de
+		push	bc
+		call	INKEYS
+		pop	bc
+		pop	de
+		pop	hl
+		cp	32
+;posun na dalsi znak
+		jr	z,INPUTSC4
+		cp	12
+;skok na predchazejici znak
+		jr	z,INPUTDEL
+		cp	13
+;konec vstupu
+		jr	z,INPUTEND
+;INKEYS vraci jen cisla a velka
+;pismena, proto nemusi byt test
+;uplny
+		cp	'F'+1
+		jr	nc,INPUTSC3
+		ld	(hl),a
+INPUTSC4
+		dec	hl
+		dec	de
+		djnz	INPUTSC2
+		jr	INPUTAG
+
+INPUTDEL	ld	a,b
+		cp	7
+;nefunguje na zacatku
+		jr	z,INPUTSC3
+		inc	b
+		inc	hl
+		inc	de
+		jr	INPUTSC2
+
+INPUTEND
+		push	ix
+		ld	de,IMPBUFF
+		ld	b,7
+		ld	ix,0
+		ld	hl,0
+INEND2
+		ld	a,(de)
+		sub	'0'
+		cp	10
+		jr	c,INEND3
+		sub	'A'-'9'-1
+;v A je 0-15
+INEND3
+;nasob HLIX 16x
+		add	ix,ix
+		adc	hl,hl
+		add	ix,ix
+		adc	hl,hl
+		add	ix,ix
+		adc	hl,hl
+		add	ix,ix
+		adc	hl,hl
+;pricti soucasne cislo
+		add	a,ixl
+		ld	ixl,a
+		inc	de
+		djnz	INEND2
+		push	ix
+		pop	bc
+		pop	ix
+;nezadano vic nez maximum?
+		ld	d,(ix+37)
+		ld	e,(ix+36)
+		or	a
+		sbc	hl,de
+		add	hl,de
+		ex	de,hl
+		jr	c,IVALOK
+;je mensi, ne konec
+		jp	nz,INPUTAG
+;rovnaji se, dolni pulka
+		ld	h,(ix+35)
+		ld	l,(ix+34)
+		or	a
+		sbc	hl,bc
+		jp	c,INPUTAG
+IVALOK	ld	(ISOSTART),bc
+		ld	(ISOSTART+2),de
+		ret
+
+
+;hleda na hdd/cf/zip iso image
+;a nacte primary volume
+;descriptor disku
+;FIXME co kdyz je bootovatelne
+;CD?
+FINDISO
+		call	PRINTSP
+		defb	22,21,0,18,1,16,2
+		defb	" Looking for im"
+		defb	"age, please wai"
+		defb	"t "
+		defb	18,0,22,20,16+128
+		call	LBAS
+		ld	de,(ISOSTART)
+		ld	bc,(ISOSTART+2)
+		push	ix
+;posun za sektor kde se naleza
+;PVD (8 je konstanta pro image,
+;nevim proc ale asi je velikost
+;image o neco mensi nez vel.
+;souboru)
+		ld	ix,16*4-8
+		ld	hl,0
+		call	ADD3232
+;pri stisku CS se hleda hned od
+;dalsiho sektoru, jinak az od
+;velikost soucasneho image
+		ld	a,254
+		in	a,(254)
+		rra
+		jr	nc,FINDISOX
+;nizsi
+		ld	ix,(MEDSIZE+2)
+;vyssi
+		ld	hl,(MEDSIZE)
+;nasobeni 4
+		add	ix,ix
+		adc	hl,hl
+		add	ix,ix
+		adc	hl,hl
+		call	ADD3232
+FINDISOX	pop	ix
+FINDISO3
+;test preruseni od uzivatele
+		ld	a,127
+		in	a,(254)
+		rra
+		jr	nc,FINDISO7
+		push	bc
+		push	de
+;tiskni jenom "sestnactky"
+		ld	a,e
+		and	%00001111
+		jr	nz,FNDNOPR
+;vypis cisla cteneho sektoru
+		ld	a,22
+		rst	16
+		ld	a,20
+		rst	16
+		ld	a,16
+		rst	16
+		ld	h,b
+		ld	l,c
+		call	PRNT12HX
+		pop	hl
+		push	hl
+		call	PRNT16HX
+		pop	de
+		pop	bc
+		push	bc
+		push	de
+;nacteni sektoru
+FNDNOPR	ld	a,1
+		ex	af,af'
+		ld	hl,BUFFER
+		set	6,b
+;LBA priznak
+		push	hl
+;BCDE=LBA sektoru, B+64 pro LBA
+;HL=kam sosat
+;A'=kolik sektoru
+		call	FINDRDS
+		pop	hl
+;pri chybe zadny image nalezen
+		jr	c,NOISOFND
+;porovnani signatury primary
+;volume descriptoru
+		ld	bc,6
+		ld	de,ISOSIGN
+FINDISO4	ld	a,(de)
+		cpi
+		jr	nz,FINDISO5
+		inc	de
+		jp	pe,FINDISO4
+		pop	de
+		pop	bc
+;zacatek image je o 16 2048B
+;sektoru drive nez prim.vol.de.
+		ld	hl,16*4
+		ex	de,hl
+		or	a
+		sbc	hl,de
+		ex	de,hl
+		jr	nc,FINDISO7
+		dec	bc
+FINDISO7	ld	(ISOSTART),de
+		ld	(ISOSTART+2),bc
+		ret
+
+FINDISO5	pop	de
+		pop	bc
+		inc	de
+		ld	a,e
+		or	d
+		jr	nz,FINDISO2
+		inc	bc
+FINDISO2	ld	l,(ix+36)
+		ld	h,(ix+37)
+		or	a
+		sbc	hl,bc
+		jp	nz,FINDISO3
+		ld	l,(ix+34)
+		ld	h,(ix+35)
+		or	a
+		sbc	hl,de
+		jp	nz,FINDISO3
+		ret
+
+NOISOFND	pop	de
+		pop	bc
+		ret
+
+
+;nacti primary vol. descriptor
+GETPVD	call	RDYCHNG
+		ret	nz
+		xor	a
+		ld	l,a
+		ld	h,a
+		ld	(MEDSIZE+2),hl
+		ld	(MEDSIZE),hl
+		ld	(LBADISK),a
+		ld	hl,16*256
+		ld	(LBADISK+1),hl
+;lba je MSB
+		ld	hl,BUFFER
+		ld	de,LBADISK
+		push	hl
+		call	READ1SEC
+		pop	hl
+		ret	c
+;je to skutecne PVD?
+		ld	bc,6
+		ld	de,ISOSIGN
+GETPVD2	ld	a,(de)
+		cpi
+		ret	nz
+		inc	de
+		jp	pe,GETPVD2
+;je, prenes data
+		ld	hl,BUFFER+40
+		ld	de,DISKNAME
+		ld	bc,32
+		ldir
+		ld	hl,BUFFER+162+1
+		ld	de,LBADISK
+		ld	bc,3
+		ldir
+;prenes velikost iso image
+;musime po pulkach kuli jiz
+;hotovemu ostatnimu kodu
+;(pocita s prohozenim po 16b)
+		ld	hl,(BUFFER+80)
+		ld	(MEDSIZE+2),hl
+		ld	hl,(BUFFER+82)
+		ld	(MEDSIZE),hl
+		ret
+
+
+TISKSIZE	xor	a
+		call	PRSIZE
+		ld	a,32
+		rst	16
+		ld	a,b
+		rst	16
+		ret
+
+
+;vytiskne LBA zacatku image a
+;LBA max. adresovatelneho sekt.
+LBAS	ld	hl,(ISOSTART+2)
+		call	PRNT12HX
+		ld	hl,(ISOSTART)
+		call	PRNT16HX
+		ld	a,'/'
+		rst	16
+		ld	h,(ix+37)
+		ld	l,(ix+36)
+		call	PRNT12HX
+		ld	h,(ix+35)
+		ld	l,(ix+34)
+		jp	PRNT16HX
+
+
+;read capacity atapi comm.
+READCAP	defw	$25,0,0,0,0,0
+;test unit ready atapi comm.
+TUREADY	defw	0,0,0,0,0,0
+;vynda medium
+EJECT	defw	$1B,0,2,0,0,0
+
+PROHOD
+;HL adresa
+;B kolik bytu
+;MENI: A
+		push	hl
+		push	bc
+		rrc	b
+PROHOD1
+		ld	a,(hl)
+		inc	hl
+		ld	c,(hl)
+		dec	hl
+		ld	(hl),c
+		inc	hl
+		ld	(hl),a
+		inc	hl
+		djnz	PROHOD1
+		pop	bc
+		pop	hl
+		ret
+
+
+;==============================
+;nejnizsi rutiny pro ATA/ATAPI
+;==============================
+
+ATAPICOM
+;v hl adresa 12 bajtu prikazu
+		ld	a,CATAPI
+		ld	b,0
+		ex	af,af'
+;fixni max. delka prenosu
+		ld	de,2048
+		call	IDEOUT2
+		ret	c
+		ld	bc,256*12+RDATA
+		call	IDE_DTRD
+		ret	c
+		otir
+;test konce operace
+		call	IDE_DRRD
+		ret	c
+		in	a,(RSTAT)
+		rra
+		jp	c,IDEDTRD1
+;fakt nevim proc, ale bez toho-
+;hle to na nekterych pomalych
+;mrchanikach nefunguje :(
+		jp	FASTDRQ
+
+;nacte vsechny predane bajty
+READCD	call	CMD_DTRD
+		ret	c
+		in	a,(RCYLH)
+		or	a
+		jr	z,READCD2
+		ld	bc,RDATA
+READCD1
+		ex	af,af'
+		call	IDE_DTRD
+		ret	c
+		inir
+		ex	af,af'
+		dec	a
+		jr	nz,READCD1
+READCD2
+;tady mozna problem, pokud cdro
+;zmeni delku behem prenosu
+		in	a,(RCYLL)
+		or	a
+		jr	z,RDCDEND
+		ld	b,a
+		ld	c,RDATA
+		call	IDE_DTRD
+		ret	c
+		inir
+;test konce operace
+RDCDEND	call	IDE_DRRD
+		ret	c
+;na konec jeste pockame
+;(potreba pro nektere zvlaste
+;pomale mrchaniky s mp drq)
+		jp	FASTDRQ
+
+IDEOUT
+;DE cyl
+;B hlava
+;C sektor
+;A pocet sektoru
+;A' prikaz
+;MENI: vola drvrdy (DE), AA'F..
+
+		out	(RSECPOC),a
+		ld	a,c
+		out	(RSEC),a
+
+IDEOUT2
+;pro atapi
+		ld	a,d
+		out	(RCYLH),a
+		ld	a,e
+		out	(RCYLL),a
+
+		ld	a,(DEVICE)
+		or	b
+		or	HKONST
+		out	(RHEAD),a
+
+		call	IDE_DRRD
+		ret	c
+
+		ex	af,af'
+		out	(RCOM),a
+
+		or	a
+		ret
+
+IDE_DRRD
+;ceka na pripravenost drivu
+; not busy & drive ready
+;pokud je prectena 0, bude to
+;asi vyresetovane ATAPI zariz.
+;pokud ne, stejne to vychcipne
+;na dalsim testu pripravenosti
+		ld	de,$2000
+IDEDRRD1
+		in	a,(RSTAT)
+		or	a
+		ret	z
+		and	192
+		cp	64
+		ret	z
+		call	TOUTWT
+		jr	nz,IDEDRRD1
+;timeout
+		ld	bc,16*7+512
+		scf
+		ret
+
+CMD_DTRD
+;ready to transfer pro ATAPI
+;s timeoutem a testem busy
+;>
+; c = error
+; nc TrReady
+		ld	de,$2000
+CMDDTRD2
+		in	a,(RSTAT)
+		bit	7,a
+		jr	nz,DTROUTC
+		rrca
+		jr	c,IDEDTRD1
+		bit	2,a
+;4. bit, je to posunuto
+		jr	z,DTROUTC
+;pauza 3 ms
+FASTDRQ	ld	a,148
+ATAWAIT	ex	(sp),hl
+		ex	(sp),hl
+		ex	(sp),hl
+		ex	(sp),hl
+		dec	a
+		jr	nz,ATAWAIT
+		ret
+DTROUTC
+		call	TOUTWT
+		jr	nz,CMDDTRD2
+;timeout
+		ld	bc,16*7+512
+		scf
+		ret
+
+IDE_DTRD
+;ready to transfer
+;s timeoutem a testem busy
+;>
+; c = error
+; nc TrReady
+		ld	de,$2000
+IDEDTRD2
+		in	a,(RSTAT)
+		bit	7,a
+		jr	nz,DTROUT
+		rrca
+		jr	c,IDEDTRD1
+		bit	2,a
+;4. bit, je to posunuto
+		ret	nz
+DTROUT
+		call	TOUTWT
+		jr	nz,IDEDTRD2
+;timeout
+		ld	bc,16*7+512
+		scf
+		ret
+
+IDEDTRD1
+		in	a,(RPARAM)
+		ld	c,a
+		ld	b,1
+		ret
+
+
+READ1SEC	ld	a,1
+
+;precte A sektoru z cdrom
+;na adresu HL
+;ukazatel na lba sektoru v DE
+READSEC	push	hl
+		ex	af,af'
+		ex	de,hl
+		ld	c,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	e,(hl)
+		pop	hl
+		ld	a,(MEDSIZE+7)
+		cp	9
+		jr	c,READSEC5
+;kdyz cdrom vraci vic jak 2048
+		ld	a,8
+;mozna by tu mohl by jump
+READSEC5
+		cp	3
+		jr	nc,READSEC4
+;nasobeni 4
+		ex	af,af'
+		add	a,a
+		add	a,a
+		ex	af,af'
+		ex	de,hl
+		ld	a,c
+		add	hl,hl
+		adc	a,0
+		add	hl,hl
+		adc	a,0
+;pricti start iso image
+		ld	bc,(ISOSTART)
+		add	hl,bc
+		push	hl
+;64 je priznak LBA
+		ld	h,64
+		ld	l,a
+		ld	bc,(ISOSTART+2)
+		adc	hl,bc
+		ld	b,h
+		ld	c,l
+		pop	hl
+		ex	de,hl
+
+;sem volat z hledani iso image
+;BCDE=LBA sektoru, B+64 pro LBA
+;HL=kam sosat
+;A'=kolik sektoru
+FINDRDS
+		ld	a,(DEVICE)
+		or	a
+		ld	a,(MAS_ATAP)
+		jr	z,IDEMAS
+		ld	a,(SLA_ATAP)
+IDEMAS	dec	a
+		ld	a,2
+		jr	z,READSEC4
+;je to hdd/cf, programujem jako
+;ide
+;prirazeni registru je spatne,
+;prohodit :(
+		ld	a,c
+		ld	c,e
+		ld	e,d
+		ld	d,a
+		ld	a,CREAD
+		ex	af,af'
+		push	af
+		call	IDEOUT
+;tady by to asi chtelo test CRY
+;ale stejne to kdyztak umre dal
+		pop	af
+;do A pocet sektoru
+		ld	bc,RDATA
+		jr	READSEC2
+
+READSEC4
+;velikost sektoru (2048 or 512)
+		out	(RCYLH),a
+		xor	a
+		out	(RCYLL),a
+		push	de
+		call	IDE_DRRD
+		jr	c,ERROR2
+		ld	a,CATAPI
+		out	(RCOM),a
+		call	CMD_DTRD
+		pop	de
+		jr	c,ERROR
+		ld	a,$28
+		out	(RDATA),a
+		ld	a,c
+		ld	bc,RDATA
+		out	(c),b
+		out	(c),b
+		out	(c),a
+		out	(c),d
+		out	(c),e
+		out	(c),b
+		out	(c),b
+		ex	af,af'
+		out	(c),a
+		ex	af,af'
+		out	(c),b
+		out	(c),b
+		out	(c),b
+		call	FASTDRQ
+		in	a,(RSTAT)
+		rra
+		jr	c,ERROR
+		ex	af,af'
+;v A pocet sektoru
+READSEC2	ex	af,af'
+		call	CMD_DTRD
+		jr	c,ERROR
+		inir
+		inir
+		ld	a,(MEDSIZE+7)
+		cp	3
+		jr	c,READSEC3
+		inir
+		inir
+		inir
+		inir
+		inir
+		inir
+READSEC3
+		ex	af,af'
+		dec	a
+		jr	nz,READSEC2
+		call	FASTDRQ
+		in	a,(RCOM)
+		rra
+		jr	c,ERROR
+;NC
+		ret
+
+ERROR2	pop	de
+		pop	hl
+ERROR	in	a,(RPARAM)
+		rra
+		rra
+		rra
+		rra
+		out	(254),a
+		scf
+		ret
+
+
+;pocitani casu pro timeout
+TOUTWT	dec	de
+		ex	(sp),hl
+		ex	(sp),hl
+		ex	(sp),hl
+		ex	(sp),hl
+		ex	(sp),hl
+		ex	(sp),hl
+		ex	(sp),hl
+		ex	(sp),hl
+;trocha casu...
+		ld	a,d
+		or	e
+		ret
+
+
+PRNT16HX	ld	c,'0'
+		ld	de,$1000
+		call	DIGIT
+PRNT12HX	ld	c,'0'
+		ld	de,$100
+		call	DIGIT
+		ld	de,$10
+		jr	DECIM1
+
+PRINTHEX	ld	c,'0'
+		ld	h,0
+		ld	l,a
+		ld	de,$10
+		jr	DECIM1
+
+PRINTL	ld	c,'0'
+		ld	h,0
+		jr	PRINTL2
+PRINTHL	ld	c,' '
+PRINTHL2	ld	de,10000
+		call	DIGIT
+		ld	de,1000
+		call	DIGIT
+		ld	de,100
+		call	DIGIT
+PRINTL2	ld	de,10
+DECIM1	call	DIGIT
+		ld	e,1
+		ld	c,'0'
+DIGIT	ld	a,'0'-1
+DIGIT1	inc	a
+		or	a
+		sbc	hl,de
+		jr	nc,DIGIT1
+		add	hl,de
+		cp	'9'+1
+		jr	nc,DIGIT3
+		cp	'0'
+		jr	nz,DIGIT2
+		ld	a,c
+		or	a
+		call	nz,16
+		ret
+DIGIT3	add	a,'A'-'9'-1
+DIGIT2	ld	c,'0'
+		rst	16
+		ret
+
+
+;"tiskne" hex cisla do pameti
+STOR16HX	ld	de,$1000
+		call	STRDG
+STOR12HX	ld	de,$100
+		call	STRDG
+		ld	de,$10
+		call	STRDG
+		ld	e,1
+STRDG	ld	a,'0'-1
+STRDG1	inc	a
+		or	a
+		sbc	hl,de
+		jr	nc,STRDG1
+		add	hl,de
+		cp	'9'+1
+		jr	c,STRDG2
+		add	a,'A'-'9'-1
+STRDG2	ld	(ix+0),a
+		inc	ix
+		ret
+
+
+;inicializace tiskove rutiny
+PRINTINI
+;vygenerovani tabulky pro
+;vypis znaku
+		call	GENERTAB
+		xor	a
+		ld	hl,ADRVRAM
+		ld	(PRINTPOZ),a
+		ld	(PRINTPOZ+1),hl
+		ld	(ATTRINV),a
+		ld	a,7
+		ld	(ACTATTR),a
+		ld	a,195
+		ld	hl,PRINTOUT
+		ld	(ACTPRINT),a
+		ld	(ACTPRINT+1),hl
+		ret
+
+;program pro tisk znaku v reg A
+;na adresu v actprint+1 a atri-
+;butem actattr
+PRINTOUT
+;je to nejaky ridici znak?
+		sub	32
+		jr	nc,PRINTZN
+		add	a,32
+		ld	b,a
+		add	a,a
+		ld	hl,PRNTTBL
+		add	a,l
+		ld	l,a
+		jr	nc,PRNOUT2
+		inc	h
+PRNOUT2	ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+;pokud je to 0, nic se nedeje
+		or	h
+		ret	z
+;je to prikaz bez parametru
+;(0-15) nebo s (16-31)?
+		ld	a,b
+		cp	16
+		jr	nc,PRNOUT3
+;bez, rovnou provedeme
+		jp	(hl)
+
+;uloz adresu obsluhy ridiciho
+;kodu pro pristi volani
+PRNOUT3	ld	(ACTPRINT+1),hl
+		ret
+
+;A=znak-32
+PRINTZN
+;zjisteni tiskove pozice
+		ld	b,a
+		ld	a,(PRINTPOZ)
+		ld	hl,(PRINTPOZ+1)
+		cp	32
+		call	z,CTRL_EN2
+		push	af
+		push	hl
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+;v radku by nemelo pretect
+		add	a,e
+		ld	e,a
+;zjisiti inverzi
+		ld	a,(ATTRINV)
+		ld	c,a
+;adresa znaku
+;15616=8*(7*256+160)
+;8192-1024=8*(3*256+128)
+;8192=8*(4*256+0)
+;		ld	a,b
+;		add	a,0
+;		ld	l,a
+		ld	l,b
+		ld	h,4
+		adc	hl,hl
+		add	hl,hl
+		add	hl,hl
+		ld	b,7
+		ld	a,(hl)
+		xor	c
+		ld	(de),a
+PRNTZN2	inc	l
+		inc	d
+		ld	a,(hl)
+		xor	c
+		ld	(de),a
+		djnz	PRNTZN2
+;prepocita adresu pixelu
+;na adresu atributu
+		ld	a,d
+		sub	64
+		rrca
+		rrca
+		rrca
+		and	3
+		add	a,88
+		ld	d,a
+		ld	a,(ACTATTR)
+		ld	(de),a
+;posun na dalsi tiskovou pozici
+		pop	hl
+		pop	af
+		inc	a
+VRADKU	ld	(PRINTPOZ),a
+		ret
+
+;tabulka obsluhy ridicich
+;znaku, 0=nezpracovava se
+PRNTTBL	defw	0,0,0,0,0,0
+		defw	CTRL_COM,0,0
+		defw	0,0,0,0,CTRL_ENT
+		defw	0,0
+;kody 0-15
+		defw	CTRL_INK,CTRL_PAP
+		defw	CTRL_FLA,CTRL_BRI
+		defw	CTRL_INV,0
+;over neumime (zbytecny)
+		defw	CTRL_AT,CTRL_TAB
+		defw	0,0,0,0,0,0,0,0
+;kody 24-31
+
+;carka, skok na pozici 0 n. 16
+CTRL_COM	ld	a,(PRINTPOZ)
+		cp	16
+		jr	nc,CTRL_ENT
+		ld	a,16
+		jr	VRADKU
+
+;enter, prechod na dalsi radek
+CTRL_ENT	ld	hl,(PRINTPOZ+1)
+		call	CTRL_EN2
+		ld	(PRINTPOZ+1),hl
+		jr	VRADKU
+
+CTRL_EN2
+;prelezli jsme konec radku
+;posun na dalsi
+		inc	hl
+		inc	hl
+;posledni radek? (24*2)
+		ld	de,ADRVRAM+48
+		xor	a
+		sbc	hl,de
+		add	hl,de
+		ret	c
+		ld	hl,ADRVRAM
+		ret
+
+;nastaveni barvy inkoustu
+CTRL_INK	ld	bc,7*256+248
+;%00000111, %11111000
+CCOLSPOL	and	b
+		ld	b,a
+		ld	a,(ACTATTR)
+		and	c
+		or	b
+		ld	(ACTATTR),a
+CTRLSPOL	ld	hl,PRINTOUT
+		ld	(ACTPRINT+1),hl
+		ret
+
+;nastaveni barvy papiru
+CTRL_PAP	ld	bc,56*256+199
+;%00111000, %11000111
+		rlca
+		rlca
+		rlca
+		jr	CCOLSPOL
+
+;nastaveni blikani
+CTRL_FLA	ld	bc,128*256+127
+;%10000000, %01111111
+		rrca
+		jr	CCOLSPOL
+
+;nastaveni jasu
+CTRL_BRI	ld	bc,64*256+191
+;%01000000, %10111111
+		rrca
+		rrca
+		jr	CCOLSPOL
+
+;nastaveni inverze (1=on,0=off)
+CTRL_INV	or	a
+		jr	z,CTRL_IN2
+		ld	a,255
+CTRL_IN2	ld	(ATTRINV),a
+		jr	CTRLSPOL
+
+;nastaveni pozice (AT)
+;prvni parametr je radek
+CTRL_AT	cp	24
+		jr	c,CTRL_AT2
+		ld	a,23
+CTRL_AT2	add	a,a
+		ld	hl,ADRVRAM
+		add	a,l
+		ld	l,a
+		jr	nc,CTRL_AT3
+		inc	h
+CTRL_AT3	ld	(PRINTPOZ+1),hl
+		ld	hl,CTRL_ATS
+		ld	(ACTPRINT+1),hl
+		ret
+;druhy parametr je sloupec
+CTRL_ATS	and	31
+		ld	(PRINTPOZ),a
+		jr	CTRLSPOL
+
+;nastaveni pozice (TAB)
+;prvni parametr je sloupec
+CTRL_TAB	and	31
+		ld	(PRINTPOZ),a
+;druhy parametr se ignoruje
+		ld	hl,CTRLSPOL
+		ld	(ACTPRINT+1),hl
+		ret
+
+
+GENERTAB	ld	hl,ADRVRAM
+		ld	de,16384
+		ld	b,24
+GTAB2	ld	(hl),e
+		inc	hl
+		ld	(hl),d
+		inc	hl
+		ld	a,32
+		add	a,e
+		ld	e,a
+		jr	nc,GTAB3
+		ld	a,d
+		add	a,8
+		ld	d,a
+GTAB3	djnz	GTAB2
+		ret
+
+;program pro urceni souboru
+CDBROWS
+		call	PRINTINI
+AGAIN
+		di
+		ld	a,(TAPACT)
+		or	a
+		jp	nz,NEXTPG
+		ld	a,(DISKACT)
+		or	a
+		jp	nz,NEXTPG
+		ld	hl,1
+		ld	(ACTSDIR),hl
+		call	GETISO1
+;FIXME! osetreni chyby
+		ret	c
+		ld	ix,BUFFER
+		push	ix
+		ld	l,(ix+11)
+		ld	h,(ix+12)
+		ld	a,(ix+13)
+;delka adresare v bytech
+		or	a
+		rra
+		rr	h
+		rr	l
+		or	a
+		rra
+		rr	h
+		rr	l
+		or	a
+		rra
+		rr	h
+		rr	l
+;delka adresare v sektorech
+		ld	(DIRLEN),hl
+		ld	l,(ix+0)
+		ld	h,0
+		pop	bc
+		add	hl,bc
+;v hl adresa prvniho souboru
+		call	GETISO2
+		ld	a,255
+		ld	(DISKACT),a
+TAPBROWS
+		ld	a,4*8
+BROWSTR
+		ld	(KURCOL),a
+		ld	hl,INDEX+2
+		ld	(VYPIS),hl
+		xor	a
+		ld	(POZICE),a
+
+NEXTPG	call	CLS
+		call	PRINTSP
+		defb	22,0,0,16,7+128
+		ld	de,(VYPIS)
+		ld	b,22
+TISKSM
+		ld	hl,(TAPCURS)
+		or	a
+		sbc	hl,de
+		ld	c,' '
+		jr	nz,TPCTST
+		ld	c,'>'
+TPCTST	ex	de,hl
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ex	de,hl
+		ld	a,h
+		or	l
+		jp	z,ENDTISK
+		push	de
+		push	bc
+		ld	a,(TAPACT)
+		or	a
+		jr	z,ISOLIST
+		inc	hl
+		ld	a,h
+		or	l
+		dec	hl
+		jr	nz,TAPLIST
+		call	PRINTSP
+		defb	"    .",'.'+128
+		jp	DIRSPOL
+
+TAPLIST
+		ld	a,c
+		rst	16
+		ld	a,(hl)
+		inc	hl
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	bc,17
+		or	a
+;pokud flag != 0, je to telo
+		jr	nz,LITELO
+;nc
+		ex	de,hl
+		sbc	hl,bc
+		add	hl,bc
+		ex	de,hl
+;pokud flag=0, ale delka != 17
+		jr	nz,LITELO
+;je to hlavicka
+		ld	a,(hl)
+		inc	hl
+		push	hl
+		call	PRINTHEX
+		ld	a,32
+		rst	16
+		pop	hl
+		ld	b,10
+		call	PRINTB
+		ld	a,32
+		rst	16
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		inc	hl
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		push	hl
+		push	bc
+		ex	de,hl
+		call	PRINTHL
+		ld	a,32
+		rst	16
+		pop	hl
+		call	PRINTHL
+		ld	a,32
+		rst	16
+		pop	hl
+		call	PRINTHL
+		jp	DIRSPOL
+
+LITELO
+		push	de
+		call	PRINTHEX
+		call	PRINTSP
+		defb	" <-body->  ",' '+128
+		pop	hl
+		call	PRINTHL
+		jr	DIRSPOL
+
+ISOLIST
+		push	hl
+		pop	ix
+		ld	bc,33
+		add	hl,bc
+		ld	a,(hl)
+		dec	a
+		jr	nz,NETECKY
+;o uroven vyse
+TECKY	call	PRINTSP
+		defb	'.','.'+128
+		jr	PJM2
+
+NETECKY	dec	hl
+		ld	a,(hl)
+;tiskni max 21 pismen
+		cp	21
+		jr	c,PJMXX
+		ld	a,21
+PJMXX	ld	b,a
+PJMSM1	inc	hl
+		ld	a,(hl)
+		cp	';'
+;strednik oddeluje cislo verze
+;souboru (k nicemu)
+		jr	z,PJM2
+		rst	16
+		djnz	PJMSM1
+PJM2	ld	a,23
+		rst	16
+		ld	a,23
+		rst	16
+		rst	16
+		bit	1,(ix+25)
+		jr	z,NODIR
+		call	PRINTSP
+;misto delky jen text "dir"
+		defb	"<DIR>",' '+128
+		jr	DIRSPOL
+
+NODIR
+		ld	l,(ix+10)
+		ld	h,(ix+11)
+		ld	e,(ix+12)
+		ld	d,(ix+13)
+		ld	a,' '
+		call	PRSIZE
+		ld	a,23
+		rst	16
+		ld	a,31
+		rst	16
+		rst	16
+		ld	a,b
+		rst	16
+
+DIRSPOL	ld	a,13
+		rst	16
+		pop	bc
+		pop	de
+		dec	b
+		jp	nz,TISKSM
+
+ENDTISK
+		ei
+
+VYBER	call	KURZOR
+VYBERSM
+		ld	a,(SECCNT)
+		cp	SSAVER
+		jr	nz,VYBERSM2
+		call	DEMFSS
+		xor	a
+		ld	(INTCNT),a
+		ld	(SECCNT),a
+		jp	NEXTPG
+
+VYBERSM2	ld	a,239
+		in	a,(254)
+		bit	3,a
+		jr	z,UP
+		bit	4,a
+		jr	z,DOWN
+		bit	2,a
+		jp	z,PGDW
+		ld	a,247
+		in	a,(254)
+		bit	4,a
+		jr	z,PGUP
+		ld	a,191
+		in	a,(254)
+		rra
+		jp	nc,ENTER
+
+		ld	a,127
+		in	a,(254)
+		rra
+		jr	c,VYBERSM
+		ret
+
+
+UP
+		xor	a
+		ld	(SECCNT),a
+		ld	a,(POZICE)
+;test zac. stranky
+		or	a
+		jr	nz,UP2
+		call	DOPGUP
+		jp	c,VYBERSM
+		ld	a,21
+		ld	(POZICE),a
+		jp	NEXTPG
+
+UP2
+;test zac. indexu
+		ld	hl,(VYPIS)
+		ld	b,a
+		add	a,a
+		ld	e,a
+		ld	d,0
+		add	hl,de
+		dec	hl
+		ld	a,(hl)
+		dec	hl
+		or	(hl)
+		jr	z,VYBERSM
+		dec	b
+UDSPOL
+		ld	a,b
+		ld	(POZICE),a
+		call	NOSIFR
+		jr	VYBER
+
+DOWN
+		xor	a
+		ld	(SECCNT),a
+		ld	a,(POZICE)
+;test na max. radku
+		cp	21
+		jr	nz,DOWN2
+		call	DOPGDW
+		jp	c,VYBERSM
+		xor	a
+		ld	(POZICE),a
+		jp	NEXTPG
+DOWN2
+;test na konec indexu
+		ld	hl,(VYPIS)
+		ld	b,a
+		inc	a
+		add	a,a
+		ld	e,a
+		ld	d,0
+		add	hl,de
+		ld	a,(hl)
+		inc	hl
+		or	(hl)
+		jp	z,VYBERSM
+		inc	b
+		jr	UDSPOL
+
+PGUP
+		xor	a
+		ld	(SECCNT),a
+		ld	b,a
+		ld	a,(POZICE)
+		or	a
+		jr	nz,UDSPOL
+		call	DOPGUP
+		jp	c,VYBERSM
+		jp	NEXTPG
+
+PGDW
+		xor	a
+		ld	(SECCNT),a
+		ld	a,(POZICE)
+		cp	21
+		jr	nz,PGDW2
+		call	DOPGDW
+		jp	c,VYBERSM
+		jp	NEXTPG
+
+PGDW2
+		ld	hl,(VYPIS)
+;2*(21+1)
+		ld	de,44
+		add	hl,de
+		ld	b,22
+PGDW3	dec	b
+		ld	a,(hl)
+		dec	hl
+		or	(hl)
+		dec	hl
+		jr	z,PGDW3
+		ld	a,(POZICE)
+		cp	b
+		jp	z,VYBERSM
+		jr	UDSPOL
+
+
+DOPGUP	ld	hl,(VYPIS)
+		ld	de,22*2
+		or	a
+		sbc	hl,de
+		ld	de,INDEX
+;vzdy NC
+		sbc	hl,de
+		add	hl,de
+		jp	nc,DOPGSPL
+;jestli ma adresar predesly
+;sektor nacteme ho
+;jestli aktivni tapka, navrat
+		ld	a,(TAPACT)
+		or	a
+		scf
+		ret	nz
+;jsou nacteny 2 sektory, ale
+;ulozene je cislo prvniho
+		ld	hl,(ACTSDIR)
+		dec	hl
+		ld	a,l
+		or	h
+		scf
+		ret	z
+		ld	hl,LBADISK
+		ld	bc,1
+		call	SUBLBA2
+;druhy sektor by sel v pameti
+;presunout ldirem, ale muselo
+;by se to sloziteji testovat,
+;takhle to neni o moc pomalejsi
+		call	GETISO1
+;FIXME! osetreni chyby
+		ret	c
+;posun vsechny ukazatele
+;tohle by slo i drive, ale
+;po prip.chybe cteni by to bylo
+;spatne
+		ld	hl,(ACTSDIR)
+		dec	hl
+		ld	(ACTSDIR),hl
+		dec	hl
+;pokud se jedna o 1 sektor adr.
+		ld	a,l
+		or	h
+		ld	hl,BUFFER
+		jr	nz,DOPGUP2
+;preskoc prvni polozku
+		ld	e,(hl)
+		ld	d,0
+		add	hl,de
+DOPGUP2
+		call	GETISO2
+;kolik polozek pridame? (pocet
+;zaznamu z nacteneho sektoru)
+		ld	hl,(ADR2SEC)
+;+44 je posun na dalsi stranku
+		ld	de,INDEX+2+44
+		or	a
+		sbc	hl,de
+		ld	de,(VYPIS)
+		add	hl,de
+		ld	(VYPIS),hl
+		or	a
+		ret
+
+DOPGDW
+		ld	hl,(VYPIS)
+;posun na dalsi stranku
+		ld	de,22*2
+		add	hl,de
+		ld	de,INDEX+588
+		or	a
+		sbc	hl,de
+		add	hl,de
+		push	hl
+		jr	nc,DOPGDWX
+;posun na konec stranky
+		ld	de,21*2
+		add	hl,de
+		ld	de,INDEX+588
+		or	a
+		sbc	hl,de
+		add	hl,de
+		jr	nc,DOPGDWX
+;test konce ve vypisu
+		ld	a,(hl)
+		inc	hl
+		or	(hl)
+		jr	nz,DOPGSPL2
+DOPGDWX
+		call	DOPGDW2
+		pop	hl
+;kdyz nc, uz je vse udelano
+		ret	nc
+		ld	(VYPIS),hl
+		call	FINDEND
+		or	a
+		ret
+
+DOPGSPL2	pop	hl
+DOPGSPL	ld	(VYPIS),hl
+		or	a
+		ret
+
+;jestli ma adresar dalsi sektor
+;nacteme ho
+DOPGDW2
+;jestli aktivni tapka, navrat
+		ld	a,(TAPACT)
+		or	a
+		scf
+		ret	nz
+		ld	hl,(DIRLEN)
+;adresar ma jen jeden sektor?
+		dec	hl
+		ld	a,l
+		or	h
+		scf
+		ret	z
+;jsou nacteny 2 sektory, ale
+;ulozene je cislo prvniho
+		ld	bc,(ACTSDIR)
+		or	a
+		sbc	hl,bc
+		scf
+		ret	z
+		ld	hl,LBADISK
+		ld	bc,1
+		call	ADDLBA2
+;druhy sektor by sel v pameti
+;presunout ldirem, ale muselo
+;by se to sloziteji testovat,
+;takhle to neni o moc pomalejsi
+		call	GETISO1
+;FIXME! osetreni chyby
+		ret	c
+;posun vsechny ukazatele
+;tohle by slo i drive, ale
+;po prip.chybe cteni by to bylo
+;spatne
+;kolik polozek ubereme?
+		ld	hl,(ACTSDIR)
+		inc	hl
+		ld	(ACTSDIR),hl
+		ld	hl,(ADR2SEC)
+;+44 je posun na dalsi stranku
+		ld	de,INDEX+2+44
+		or	a
+		sbc	hl,de
+		ex	de,hl
+		ld	hl,(VYPIS)
+		or	a
+		sbc	hl,de
+		ld	(VYPIS),hl
+		push	hl
+		ld	hl,BUFFER
+		call	GETISO2
+		pop	hl
+FINDEND
+;najdi konec zaznamu
+;2*(21+1)
+		ld	de,44
+		add	hl,de
+		ld	b,22
+DOPGDWY	dec	b
+		ld	a,(hl)
+		dec	hl
+		or	(hl)
+		dec	hl
+		jr	z,DOPGDWY
+		ld	a,b
+		ld	(POZICE),a
+		or	a
+		ret
+
+
+ENTER
+		xor	a
+		ld	(SECCNT),a
+		call	GETFILE
+		ld	a,(TAPACT)
+		or	a
+		jr	z,ENTER2
+		inc	hl
+		ld	a,l
+		or	h
+		jr	z,LEAVETAP
+		ld	(TAPCURS),de
+		call	NOSIFR
+;navrat do NMI menu
+		ret
+
+LEAVETAP
+;v A by mela byt 0
+		ld	(TAPACT),a
+;obnov dat. struktury disku
+		call	GETISO1
+;FIXME! osetreni chyby
+		ret	c
+		ld	hl,(ACTSDIR)
+		dec	hl
+;pokud se jedna o 1 sektor adr.
+		ld	a,l
+		or	h
+		ld	hl,BUFFER
+		jr	nz,LVTAP2
+;preskoc prvni polozku
+		ld	e,(hl)
+		ld	d,0
+		add	hl,de
+LVTAP2
+		call	GETISO2
+		ld	a,(POZBAK)
+		ld	(POZICE),a
+		ld	hl,(VYPBAK)
+		ld	(VYPIS),hl
+		ld	a,4*8
+		ld	(KURCOL),a
+		jp	AGAIN
+
+ENTER2
+		bit	1,(ix+25)
+		jr	z,NOTDIR
+		ld	de,LBADISK
+		ld	bc,7
+		add	hl,bc
+		ld	c,3
+		ldir
+		xor	a
+		ld	(DISKACT),a
+		jp	AGAIN
+NOTDIR
+		ld	a,(ix+12)
+		or	(ix+13)
+		jp	nz,NOTASCR
+		ex	de,hl
+		ld	l,(ix+10)
+		ld	h,(ix+11)
+		ld	bc,6144
+		or	a
+		sbc	hl,bc
+		add	hl,bc
+		jr	nz,NOTMSCR
+;asi je to obrazek bez atributu
+		ld	a,7*8
+		push	de
+		call	ATRIB
+		pop	hl
+;v hl adresa polozky
+		ld	bc,6144
+SCRSPOL
+		push	bc
+		ld	de,7
+		add	hl,de
+		call	CAINIT
+		pop	bc
+		ld	de,16384
+		call	CAREAD
+;osetreni chyby pri cteni?
+		call	GUESBORD
+		call	NOSIFR
+;pockej na stisk libovol. klav.
+		di
+SCRWTK	xor	a
+		in	a,(254)
+		cpl
+		and	31
+		jr	z,SCRWTK
+		xor	a
+		out	(254),a
+		jp	NEXTPG
+
+NOTMSCR	ld	b,6912/256
+;e=0
+		or	a
+		sbc	hl,bc
+		ex	de,hl
+		jr	nz,NOTASCR
+;asi to je barevny obrazek
+;v hl adresa polozky
+		jr	SCRSPOL
+
+NOTASCR
+		ld	de,32
+		add	hl,de
+;uchovej si adresu jmena
+		ld	d,h
+		ld	e,l
+;najdi tecku (pripona)
+		ld	c,(hl)
+		ld	b,0
+		add	hl,bc
+		ld	b,c
+FINDOT	ld	a,(hl)
+		cp	'.'
+		jr	z,ISDOT
+		dec	hl
+		djnz	FINDOT
+;soubor nema tecku (neni prip.)
+		jp	VYBERSM
+
+ISDOT	inc	hl
+;adresa celeho jmena na zasob.
+		push	de
+;adresa pripony na zasobnik
+		push	hl
+		ld	de,EXTTAP
+		ex	de,hl
+		ld	b,3
+		call	STRNCMP
+;adresa pripony v HL
+		pop	hl
+		jp	nz,NENITAP
+;obsluha tapky
+;zazalohuj aktualni pozici
+;vypisu a kurzoru
+		ld	a,(POZICE)
+		ld	(POZBAK),a
+		ld	hl,(VYPIS)
+		ld	(VYPBAK),hl
+;prenes jmeno
+		ld	hl,TAPNAME
+		push	hl
+		ld	bc,31
+		ld	a,32
+		call	FILLBYTE
+		pop	de
+		pop	hl
+		ld	c,(hl)
+		ld	b,0
+		inc	hl
+;neprenasej cislo verze souboru
+;(oddelene strednikem)
+SEMICOL	ld	a,(hl)
+		cp	';'
+		jr	z,NOSEMIC
+		ldi
+		jp	pe,SEMICOL
+NOSEMIC
+;v ix adresa cele polozky
+		ld	a,2*8
+		ld	(KURCOL),a
+;priznak: pracujem s tapkou
+		ld	(TAPACT),a
+		call	KURZOR
+
+;schovej si delku tapky 2x
+;(jednou pro sledovani konce a
+;podruhe pro vypis v NMI menu)
+		push	ix
+		pop	hl
+		ld	bc,7
+		add	hl,bc
+		push	hl
+		call	CAINIT
+		pop	hl
+		ld	bc,3
+		add	hl,bc
+		inc	bc
+		ld	de,TAPLEN2
+		push	hl
+		ldir
+		pop	hl
+		ld	c,4
+		ldir
+
+;inicalizuj buffer a index
+;(oboje se bude tvorit znovu)
+		ld	hl,BUFFER
+		ld	bc,4095
+		xor	a
+		call	FILLBYTE
+		ld	hl,INDEX
+		ld	bc,588-1
+		call	FILLBYTE
+
+		ld	ix,INDEX+2
+		ld	de,BUFFER
+;udelej misto pro ".."
+		ld	(ix+0),255
+		ld	(ix+1),255
+		inc	ix
+		inc	ix
+;load-cursor na prvni polozku
+		ld	(TAPCURS),ix
+
+MKTAPIND
+;jisti, jestli neni moc souboru
+;v indexu
+		push	ix
+		pop	hl
+		ld	bc,INDEX+588-2
+		or	a
+		sbc	hl,bc
+		jr	nc,TAPFAIL
+;neprelezem pres konec bufferu?
+		ex	de,hl
+		ld	bc,BUFFER+4096-18
+;fixne na hlavicku, takze telo
+;by se mozna jeste veslo, ale
+;test by byl slozitejsi
+		or	a
+		sbc	hl,bc
+		add	hl,bc
+		ex	de,hl
+		jr	nc,TAPFAIL
+
+;zjisti, jestli uz nejsme na
+;konci tapky (delka = 0)
+		ld	hl,TAPLEN
+		ld	a,(hl)
+		inc	hl
+		or	(hl)
+		inc	hl
+		or	(hl)
+		inc	hl
+		or	(hl)
+;tady s tim neco udelat
+;nejlepe vypsat
+		jp	z,TAPBROWS
+;delka bloku
+		call	CARDONE
+		jr	c,TAPFAIL2
+		ld	c,a
+		call	CARDONE
+		jr	c,TAPFAIL2
+		ld	b,a
+;test na nulovou delku bloku
+;(maji nektere tapky)
+		or	c
+;povazuj to za uspesny konec
+		jp	z,TAPBROWS
+;odecti delku bl. od delky tap
+;(32 bitu, humus)
+		push	bc
+		ld	hl,(TAPLEN)
+;zapocitej i 2 B delky
+		inc	bc
+		inc	bc
+		or	a
+		sbc	hl,bc
+		ld	bc,0
+		ld	(TAPLEN),hl
+		ld	hl,(TAPLEN+2)
+		sbc	hl,bc
+		ld	(TAPLEN+2),hl
+		pop	bc
+
+;flagbyte
+		call	CARDONE
+		jr	c,TAPFAIL2
+;pridej polozku do indexu
+		ld	(ix+0),e
+		ld	(ix+1),d
+		inc	ix
+		inc	ix
+;uloz flag
+		ld	(de),a
+		inc	de
+;sniz delku bloku o flag a crc
+		dec	bc
+;pro pozdejsi seek nebo read
+		push	bc
+;podle flagu hlav/telo
+		push	af
+		dec	bc
+		ex	de,hl
+		ld	(hl),c
+		inc	hl
+		ld	(hl),b
+		inc	hl
+		ex	de,hl
+		pop	af
+		or	a
+		jr	nz,TAPBODY
+		ld	hl,17
+		or	a
+		sbc	hl,bc
+		jr	nz,TAPBODY
+;je to hlavicka
+;precti hlavicku a crc
+;(crc ignorovano a je zahozeno)
+		pop	bc
+;BC=18 (pro platnou hlavicku)
+		call	CAREAD
+		jr	c,TAPFAIL2
+;zahod crc bloku
+		dec	de
+		jp	MKTAPIND
+
+;chyba tapky (chyba formatu
+;nebo pri cteni)
+TAPFAIL2	ld	a,3*8
+		defb	33
+;chyba tapky (nevejde se)
+;nastav zluty kurzor
+TAPFAIL	ld	a,6*8
+		jp	BROWSTR
+
+TAPBODY
+;uchovej lba nacteneho sektoru
+;ale je to cislo dalsiho sekt.
+;takze musis snizit o 1
+		ld	c,e
+		ld	b,d
+;push de
+		ld	hl,CACHELBA
+		ld	a,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	e,(hl)
+		ex	de,hl
+		ld	de,1
+		or	a
+		sbc	hl,de
+		sbc	a,0
+		ex	de,hl
+		ld	l,c
+		ld	h,b
+;pop hl
+		ld	(hl),a
+		inc	hl
+		ld	(hl),d
+		inc	hl
+		ld	(hl),e
+		inc	hl
+		ex	de,hl
+;a pozici v sektoru
+		ld	hl,(CACHEKUR)
+		ld	bc,CACHE
+		or	a
+		sbc	hl,bc
+		ex	de,hl
+		ld	(hl),e
+		inc	hl
+		ld	(hl),d
+		inc	hl
+		ex	de,hl
+		pop	bc
+		push	de
+		call	CASEEK
+		pop	de
+		jr	c,TAPFAIL2
+		jp	MKTAPIND
+
+
+;spousteni .SNA
+NENITAP
+;vyzvedni cele jmeno (k nicemu)
+		pop	de
+;uloz adresu pripony
+		push	hl
+		ld	de,EXTSNA
+		ex	de,hl
+		ld	b,3
+		call	STRNCMP
+		pop	hl
+		jp	nz,NENISNA
+;obsluha snapu .sna
+		di
+;konfig 128 na 48 (reset stav)
+		ld	a,16+64
+		out	(253),a
+;v ix adresa cele polozky
+		push	ix
+		pop	hl
+;v hl adresa polozky
+		ld	de,7
+		add	hl,de
+		call	CAINIT
+		ld	bc,SNALEN
+		ld	de,SNASTART
+		push	de
+		call	CAREAD
+		pop	de
+		jp	c,SNAERR
+;vytvor si relativni skok podle
+;stavu preruseni
+		ld	a,(SNASTART+19)
+		bit	2,a
+		ld	hl,EIROM
+		jr	nz,SNAEI
+		inc	hl
+SNAEI	ld	(SNARUN+1),hl
+		ld	hl,SNASTART+26
+		ld	a,(hl)
+		out	(254),a
+		dec	hl
+		ld	a,(hl)
+		im	0
+		or	a
+		jr	z,IMSNA
+		im	1
+		dec	a
+		jr	z,IMSNA
+		im	2
+IMSNA
+;v DE je SNASTART
+		ex	de,hl
+		ld	a,(hl)
+		ld	i,a
+		inc	hl
+		ld	sp,hl
+		pop	hl
+		pop	de
+		pop	bc
+		pop	af
+		exx
+		ex	af,af'
+		pop	hl
+		pop	de
+		pop	bc
+		pop	iy
+		pop	ix
+;stejne asi bude R spatne :(
+		pop	af
+		ld	r,a
+		pop	af
+		ld	sp,(SNASTART+23)
+		jp	SNARUN
+
+;konec prace se .sna
+
+
+;spousteni .MFC
+NENISNA
+		push	hl
+		ld	de,EXTMFC
+		ex	de,hl
+		ld	b,3
+		call	STRNCMP
+		pop	hl
+		jp	nz,NENIMFC
+;obsluha snapu .mfc
+		di
+;konfig 128 na 48 (reset stav)
+		ld	a,16+64
+		out	(253),a
+;v ix adresa cele polozky
+		push	ix
+		pop	hl
+;v hl adresa polozky
+		ld	de,7
+		add	hl,de
+		call	CAINIT
+		ld	bc,MFCHEAD
+		ld	de,MFCSTART
+		call	CAREAD
+		jp	c,SNAERR
+;border
+		ld	a,(MFCSTART+5)
+		out	(254),a
+		push	de
+		ld	bc,512-MFCHEAD
+		call	CASEEK
+;nemusi byt test uspesnosti,
+;urcite to jede to z cache
+;nacteni 48K dat
+		pop	de
+		ld	bc,49152
+		call	CAREAD
+		jp	c,SNAERR
+		ld	a,(SNASTART+4)
+		or	a
+		jr	z,MFC48
+;je to 128K snap, loadnem str.
+		ld	hl,MFCPAGES
+MFC128	ld	a,(hl)
+		or	a
+		jr	z,MFC128_2
+		out	(253),a
+		inc	hl
+		push	hl
+		ld	de,49152
+		ld	bc,16384
+		call	CAREAD
+		pop	hl
+		jp	c,SNAERR
+		jr	MFC128
+MFC128_2
+		ld	hl,MFCSTART+37
+		push	hl
+		call	AYSOUND
+		pop	hl
+		dec	hl
+		ld	b,255
+		ld	a,(hl)
+		out	(c),a
+		dec	hl
+;nastaveni aktualni 128 stranky
+		ld	a,(hl)
+;aby fungoval out na 253 (+2A)
+		or	16+64
+		out	(253),a
+;dal uz spolecne pro 48 i 128
+MFC48
+;vytvor si relativni skok podle
+;stavu preruseni
+		ld	a,(MFCSTART+30)
+		bit	2,a
+		ld	hl,EIROM
+		jr	nz,MFCEI
+		inc	hl
+MFCEI	ld	(SNARUN+1),hl
+		ld	sp,MFCSTART+6
+		pop	hl
+		pop	de
+		ld	a,d
+		or	e
+		jr	z,MFC_NOPC
+;ulozeni startu na zas. prog.
+		dec	hl
+		ld	(hl),d
+		dec	hl
+		ld	(hl),e
+		ld	(MFCSTART+6),hl
+MFC_NOPC	ld	a,(MFCSTART+10)
+		im	0
+		or	a
+		jr	z,IMMFC
+		im	1
+		dec	a
+		jr	z,IMMFC
+		im	2
+IMMFC
+		pop	af
+		ld	i,a
+		pop	hl
+		pop	de
+		pop	bc
+		pop	af
+		exx
+		ex	af,af'
+		pop	hl
+		pop	de
+		pop	bc
+		pop	iy
+		pop	ix
+;stejne asi bude R spatne :(
+		pop	af
+		ld	r,a
+		pop	af
+		ld	sp,(MFCSTART+6)
+		jp	SNARUN
+
+MFCPAGES	defb	17+64,19+64,20+64
+		defb	22+64,23+64,0
+
+;konec prace se .mfc
+
+;spousteni .Z80
+NENIMFC
+		ld	de,EXTZ80
+		ex	de,hl
+		ld	b,3
+		call	STRNCMP
+		jp	nz,VYBERSM
+;obsluha snapu .z80
+		di
+;konfig 128 na 48 (reset stav)
+		ld	a,16+64
+		out	(253),a
+;v ix adresa cele polozky
+		push	ix
+		pop	hl
+;v hl adresa polozky
+		ld	de,7
+		add	hl,de
+		call	CAINIT
+;zacatek stejny ve vsech verz.
+		ld	bc,30
+		ld	de,Z80START
+		call	CAREAD
+		jp	c,SNAERR
+		ld	a,(Z80START+12)
+		inc	a
+		jr	nz,Z80BORD
+;korekce 255->1
+		ld	a,2
+Z80BORD	dec	a
+		ld	b,a
+;v B priznaky pro verzi 1.x
+		rra
+		and	7
+		out	(254),a
+;paper i ink na border
+		ld	c,a
+		rlca
+		rlca
+		rlca
+		or	c
+		push	bc
+		call	ATRIB
+		pop	bc
+		ld	de,(Z80START+6)
+		ld	a,e
+		or	d
+;kdyz PC neni 0, je to verze 1
+		jp	nz,VERS1
+;nasleduje delka dalsich dat
+		call	CARDONE
+		jp	c,SNAERR
+		ld	c,a
+		call	CARDONE
+		jp	c,SNAERR
+		ld	b,a
+;vsechny je nacti
+		push	bc
+		ld	de,Z80START+32
+		call	CAREAD
+;tady melo byt pop bc, ale je
+;to jedno
+		jp	c,SNAERR
+		call	PRINTSP
+		defb	22,11,4,17,0,16,6
+		defb	" Running Z80 ",'v'+128
+		pop	bc
+;v2.x nebo 3.x+?
+		ld	a,c
+		ld	b,3
+		ld	hl,V2XTXT
+		cp	23
+		jr	z,JETO2X
+		inc	b
+		ld	hl,V3XTXT
+JETO2X	call	PRINT128
+;zjisti verzi snapu (48/128)
+		ld	a,(Z80START+34)
+		cp	b
+		jr	c,K48
+;vyjimky dalsich emulatoru
+;didaktik
+		cp	11
+		jr	z,K48
+;timex
+		cp	14
+		jr	z,K48
+		cp	128
+		jr	z,K48
+K128	ld	hl,128
+		call	Z8048128
+		ld	b,8
+K128_2
+		call	ONEPAGE1
+		jr	c,SNAERR
+		djnz	K128_2
+		jp	RUNZ80
+
+K48	ld	hl,48
+		call	Z8048128
+		ld	hl,32768
+		call	ONEPAGE4
+		jr	c,SNAERR
+;hl,49152
+		call	ONEPAGE4
+		jr	c,SNAERR
+		ld	hl,16384
+		call	ONEPAGE4
+		jr	c,SNAERR
+;pro 48K ne AY ani stranka
+		jp	JENV1
+
+;vypis verze
+Z8048128	ld	c,0
+		call	PRINTHL2
+		call	PRINTSP
+		defb	'K',32,16,2,18,1
+		defb	22,13,9
+		defb	" Please wait",' '+128
+		ret
+
+;chyba pri spusteni snapu
+SNAERR	in	a,(167)
+		rra
+		rra
+		rra
+		rra
+		out	(254),a
+		halt
+;tady to skonci, je di
+
+
+;precte jednu stranku s pripad-
+;nym vynechanim nechtenych str.
+ONEPAGE	call	RDPG
+		ret	c
+;odecti posun 128 stranek
+		sub	3
+		jr	c,BADPG
+		cp	8
+		jr	c,GOODPG
+BADPG
+;spatne cislo stranky, vynech
+;test na kompresi bloku
+		ld	b,d
+		ld	c,e
+		inc	de
+		ld	a,d
+		or	e
+		jr	nz,BADPG2
+		ld	bc,16384
+;preskoc
+BADPG2	call	CASEEK
+		ret	c
+;zkus dalsi stranku
+		jr	ONEPAGE
+
+GOODPG	or	a
+		ret
+
+
+;precte jednu stranku pro 128k
+;navrat s C kdyz chyba
+ONEPAGE1	call	ONEPAGE
+		ret	c
+;vyuzij zrcadleni stranek
+		ld	hl,49152
+;aby fungoval out na 253 (+2A)
+		or	64
+		out	(253),a
+		jr	Z80RDBK
+
+;precte jednu stranku pro 48k
+;navrat s C kdyz chyba
+ONEPAGE4	push	hl
+		call	ONEPAGE
+		pop	hl
+		ret	c
+;spolecna cast (48/128)
+;je blok komprimovan?
+Z80RDBK	inc	de
+		ld	a,d
+		or	e
+		dec	de
+		jr	nz,DEPSM1
+;bez komprese, prime cteni
+		ex	de,hl
+		ld	bc,16384
+		call	CAREAD
+;navrat se predpoklada s HL
+		ex	de,hl
+		ret
+
+DEPSM1	call	CARDONE2
+		ret	c
+;komprese?
+		cp	$ED
+		jr	z,PACK1
+PACK3	ld	(hl),a
+		inc	hl
+DEPSM3	ld	a,e
+		or	d
+		jr	nz,DEPSM1
+		or	a
+		ret
+
+PACK1	ld	a,e
+		or	d
+;jestli na konci, komprese ne
+		ld	a,$ED
+		jr	z,PACK3
+		call	CARDONE2
+		ret	c
+		cp	$ED
+		jr	z,PACK2
+		ld	(hl),$ED
+		inc	hl
+		jr	PACK3
+
+PACK2
+		call	CARDONE2
+		ret	c
+		push	bc
+		ld	b,a
+		call	CARDONE2
+		push	af
+DEPSM2	ld	(hl),a
+		inc	hl
+		djnz	DEPSM2
+		pop	af
+		ret	c
+		pop	bc
+		jr	DEPSM3
+
+
+;nacte hlavicku stranky
+;navrat s C kdyz chyba
+;v DE delka bloku
+;a A cislo stranky
+RDPG	call	CARDONE
+		ret	c
+		ld	e,a
+		call	CARDONE
+		ret	c
+		ld	d,a
+		jp	CARDONE
+
+
+;zpracuje blok verze 1.x
+;navrat s C kdyz chyba
+DEPV1_1	call	CARDONE
+		ret	c
+;komprese? konec bloku?
+		cp	$ED
+		jr	z,PACKV1_1
+PACKV1_3	ld	(hl),a
+		inc	hl
+		jr	DEPV1_1
+
+PACKV1_1
+		call	CARDONE
+		ret	c
+		cp	$ED
+		jr	z,PACKV1_2
+		ld	(hl),$ED
+		inc	hl
+		jr	PACKV1_3
+
+PACKV1_2
+		call	CARDONE
+		ret	c
+;konec bloku? ($ED $ED $00)
+;dofufam, ze 0 taky neznamena
+;256x a konec je jenom
+;$00 $ED $ED $00
+		or	a
+;NC je taky
+		ret	z
+		ld	b,a
+		call	CARDONE
+		ret	c
+DEPV1_2	ld	(hl),a
+		inc	hl
+		djnz	DEPV1_2
+		jr	DEPV1_1
+
+;nacteni .z80 verze 1.x
+VERS1
+		ld	hl,16384
+;komprimovany blok?
+		bit	5,b
+		jr	nz,V1PACK
+		ex	de,hl
+		ld	bc,49152
+		call	CAREAD
+		jr	V1SPOL
+
+V1PACK	call	DEPV1_1
+V1SPOL	jp	c,SNAERR
+		jr	JENV1
+
+RUNZ80
+		ld	hl,Z80START+39
+		call	AYSOUND
+		ld	b,255
+		ld	a,(Z80START+38)
+		out	(c),a
+;nastaveni aktualni 128 stranky
+		ld	a,(Z80START+35)
+;aby fungoval out na 253 (+2A)
+		or	64
+		out	(253),a
+JENV1
+		ld	a,(Z80START+27)
+		or	a
+		ld	hl,EIROM
+		jr	nz,Z80EI
+		inc	hl
+Z80EI	ld	(SNARUN+1),hl
+		ld	sp,Z80START+15
+		pop	bc
+		pop	de
+		pop	hl
+		exx
+		pop	af
+		ex	af,af'
+		pop	iy
+		pop	ix
+		ld	a,(Z80START+29)
+		im	0
+		and	%00000011
+		jr	z,IMZ80
+		im	1
+		dec	a
+		jr	z,IMZ80
+		im	2
+IMZ80	ld	hl,Z80START+10
+		ld	a,(hl)
+		ld	i,a
+		inc	hl
+		ld	a,(hl)
+		inc	hl
+		rla
+		ld	b,a
+		ld	a,(hl)
+		rra
+		ld	a,b
+		rra
+		ld	r,a
+		ld	sp,Z80START
+;vezmi spravny reg. PC
+		ld	de,(Z80START+6)
+		ld	a,e
+		or	d
+		jr	nz,PC_V1
+		ld	de,(Z80START+32)
+PC_V1
+		pop	af
+		pop	bc
+		pop	hl
+		ld	sp,(Z80START+8)
+;trochu naroste zasobnik, ale
+;to by nemelo vadit
+		push	de
+		ld	de,(Z80START+13)
+		jp	SNARUN
+
+;konec prace se .z80
+
+
+;naboucha do AY data z (HL)
+AYSOUND	ld	c,253
+		ld	de,16
+AYFILL	ld	a,(hl)
+		ld	b,255
+		out	(c),d
+		ld	b,191
+		out	(c),a
+		inc	hl
+		inc	d
+		dec	e
+		jr	nz,AYFILL
+		ret
+
+;umlci AY a ulozi si hodnoty
+AYSILEN	ld	c,253
+		ld	hl,AYREGS
+		ld	de,16
+AYREAD	ld	b,255
+		out	(c),d
+		in	a,(c)
+		ld	(hl),a
+		ld	b,191
+		xor	a
+		out	(c),a
+		inc	hl
+		inc	d
+		dec	e
+		jr	nz,AYREAD
+		ret
+
+;pocka par preruseni, aby hned
+;nezabraly testy klaves
+NOSIFR	halt
+		halt
+		halt
+		halt
+		ret
+
+
+;vrati v HL a IX adresu souboru
+;v bufferu
+;v DE adresu polozky v indexu
+GETFILE
+		ld	a,(POZICE)
+		add	a,a
+		ld	hl,(VYPIS)
+		ld	c,a
+		ld	b,0
+		add	hl,bc
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		dec	hl
+		ex	de,hl
+		push	hl
+		pop	ix
+		ret
+
+
+;vytiskne delku v HLDE
+;v A znak pro tisk nevyznamnych
+;nul, 0=netisknout
+;v reg B vraci pismeno jednotek
+;(B, K nebo M)
+PRSIZE	ld	bc,'B'*256+0
+		ex	af,af'
+		ld	a,e
+		or	d
+		jr	z,PRLEN
+		call	NAKM
+		ld	a,e
+		or	a
+		ld	b,'K'
+		jr	z,PRLEN
+		call	NAKM
+		ld	b,'M'
+PRLEN
+		push	bc
+		ex	af,af'
+		ld	c,a
+		call	PRINTHL2
+		pop	bc
+		ld	a,c
+		or	a
+		ret	z
+		ld	a,'.'
+		rst	16
+		ld	a,'0'
+		add	a,c
+		rst	16
+		ret
+
+
+;prevede cislo v DEHL na vyssi
+;jednotky (kila nebo mega)
+;>HL vysledek
+;  C desetiny
+NAKM	xor	a
+;/1024 (/256 /4)
+		ld	l,h
+		ld	h,e
+		ld	e,d
+		ld	d,a
+		srl	e
+		rr	h
+		rr	l
+		jr	nc,DES1
+		add	a,2
+DES1	srl	e
+		rr	h
+		rr	l
+		jr	nc,DES2
+		add	a,5
+DES2	ld	c,a
+		ret
+
+
+;precte dva za sebou jdouci
+;sektory adresare do bufferu
+;na LBADISK adresa prvniho sec.
+;pokud je adresar dlouhy jen
+;jeden sektor, nactou se nejake
+;blbosti do druheho, ale to
+;nevadi
+GETISO1
+		ld	hl,BUFFER
+		ld	de,LBADISK
+		ld	a,2
+		jp	READSEC
+
+;vytvori index sektoru
+;v HL adresa prvniho souboru
+GETISO2
+		push	hl
+		ld	hl,INDEX
+		ld	bc,588-1
+		xor	a
+		call	FILLBYTE
+		ld	de,INDEX+2
+		pop	hl
+		call	GETIND
+		ld	hl,(DIRLEN)
+;adresar ma jen jeden sektor?
+		dec	hl
+		ld	a,l
+		or	h
+		ret	z
+		ld	(ADR2SEC),de
+		ld	hl,BUFFER+2048
+;		jp	GETIND
+;sem nic nepridavat!
+
+;vytvori index jednoho sektoru
+;v DE ukazatel na index
+;v HL ukazatel na sektor
+GETIND	ld	bc,2048
+		push	hl
+		add	hl,bc
+		ld	b,h
+		ld	c,l
+		pop	hl
+GETINDSM
+		ld	a,(hl)
+		or	a
+		ret	z
+		ex	de,hl
+		ld	(hl),e
+		inc	hl
+		ld	(hl),d
+		inc	hl
+		ex	de,hl
+		push	bc
+		ld	c,a
+		ld	b,0
+		add	hl,bc
+;tohle tu asi nemusi byt, ale
+;pro jistotu
+		pop	bc
+		or	a
+		sbc	hl,bc
+		add	hl,bc
+		jr	c,GETINDSM
+		ret
+
+
+KURZOR	push	hl
+		push	de
+		ld	a,7
+		call	ATRIB
+		ld	a,(POZICE)
+		add	a,a
+		add	a,a
+		add	a,a
+		ld	l,a
+		ld	h,0
+		add	hl,hl
+		add	hl,hl
+		ld	bc,22528
+		add	hl,bc
+		ld	a,(KURCOL)
+		ld	bc,31
+		call	FILLBYTE
+		pop	de
+		pop	hl
+		ret
+
+;podprogam pro cteni klaves
+;(ceka) s autorepeatem
+;potrebuje povolene preruseni
+;hodnota v A a D
+INKEYS
+		halt
+DOBA	ld	a,(REPPER)
+		dec	a
+		jr	z,DOBA2
+		ld	(REPPER),a
+DOBA2	call	KEYSCAN
+		jr	nz,INKEYS
+		ld	a,e
+		inc	a
+		jr	z,INKEYS
+;shifty nepotrebujem
+		ld	hl,KEYSTAB
+		ld	d,0
+		add	hl,de
+		ld	a,(hl)
+		or	a
+		jr	z,INKEYS
+		ld	hl,LASTKEY
+		ld	d,a
+		cp	(hl)
+		jr	nz,MINNE
+		ld	a,(REPPER)
+		dec	a
+		jr	nz,INKEYS
+		ld	a,CON_REP
+KEYSPOL	ld	(REPPER),a
+		ld	a,d
+		ret
+
+MINNE	ld	(hl),a
+		ld	a,CON_DEL
+		jr	KEYSPOL
+
+
+;program z ROM (adr $28E)
+KEYSCAN	ld	l,$2F
+		ld	de,$FFFF
+		ld	bc,$FEFE
+KEYLINE	in	a,(c)
+		cpl
+		and	$1F
+		jr	z,KEYDONE
+		ld	h,a
+		ld	a,l
+KEY3KEYS	inc	d
+		ret	nz
+KEYBITS	sub	8
+		srl	h
+		jr	nc,KEYBITS
+		ld	d,e
+		ld	e,a
+		jr	nz,KEY3KEYS
+KEYDONE	dec	l
+		rlc	b
+		jr	c,KEYLINE
+		ld	a,d
+		inc	a
+		ret	z
+		cp	$28
+		ret	z
+		cp	$19
+		ret	z
+		ld	a,e
+		ld	e,d
+		ld	d,a
+		cp	$18
+		ret
+
+
+;obecne texty
+MASTER	defb	16,3
+		defb	"maste",'r'+128
+SLAVE	defb	16,3
+		defb	"slave",' '+128
+
+STATTBL	defw	STAT0,STAT1,STAT2
+		defw	STAT3,STAT4
+
+STAT0	defb	16,2
+		defb	"<no LBA supp.",'>'+128
+STAT1	defb	16,4
+		defb	"<ready>       "
+		defb	16,5+128
+STAT2	defb	16,2
+		defb	"<not ready>  ",' '+128
+STAT3	defb	16,2
+		defb	"<medium error",'>'+128
+STAT4	defb	16,2
+		defb	"<device error",'>'+128
+
+NOTDEV	defb	"not present or "
+		defb	"device error   "
+		defb	32,32,0,0
+
+V2XTXT	defb	"2.x",' '+128
+V3XTXT	defb	"3.x+",' '+128
+
+EXTTAP	defb	"tap"
+EXTSNA	defb	"sna"
+EXTZ80	defb	"z80"
+EXTMFC	defb	"mfc"
+EXTTXT	defb	"txt"
+
+ISOSIGN	defb	1
+		defb	"CD001"
+
+;tabulka pro prekodovani kodu
+;klaves z KEYSCANu
+KEYSTAB	defb	"BHY65TGV"
+		defb	"NJU74RFC"
+		defb	"MKI83EDX"
+		defb	12
+		defb	"LO92WSZ"
+		defb	' ',13
+		defb	"P01QA"
+		defb	0
+
+ROMEND
+
+;strankovani zpet do ROM ZXS
+;o strankovani se stara HW
+		org	$1FF6
+		phase $1FF6
+PAGING
+EIROM2	pop	af
+EIROM	ei
+TOBASROM	ret
+		defb	7 dup (0)
+
+;spakovane logo
+LOGO	equ	PAGING-622
+
+		org	LOGO
+		phase LOGO
+
+		binclude "logo.pck"
+
+
+FREEROM	equ	LOGO-ROMEND 
+
+
+; nastaveni pro VI (tabulatory 5 znaku a filetype)
+; vim:set ts=5 ft=z8a:
