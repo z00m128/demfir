@@ -28,5 +28,5 @@ clean:
 distrib: $(BASE).iso
 	rm -rf $(DEST)/$(DISTR_DIR)
 	mkdir $(DEST)/$(DISTR_DIR)
-	cp $(DOCS) $(SOURCE) $(INCLUDES) $(BASE).bin $(BASE).iso $(DEST)/$(DISTR_DIR)
+	cp $(DOCS) $(SOURCE) $(INCLUDES) $(BASE).bin $(BASE).iso $(FILES) $(DEST)/$(DISTR_DIR)
 	cd $(DEST); tar zcvf $(DISTR_DIR).tar.gz $(DISTR_DIR)
