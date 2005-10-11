@@ -5,7 +5,7 @@ installed..." - all files are created.
 
 Needed SW
 - Linux or Unix, maybe some unix-like enviroment (MinGW etc.)
-- System progs cat, awk, grep, tr, make, bash compatible shell
+- System progs cat, grep, tr, make, bash compatible shell
 - mkisofs (package cdrtools [http://www.fokus.gmd.de/research/cc/glone/employees/joerg.schilling/private/mkisofs.html])
 - Macroassembler AS [http://john.ccac.rwth-aachen.de:8000/as/] (version 1.42 at
   least, DEMFIR _CANNOT_ be build with version 1.41rX
@@ -19,16 +19,40 @@ All generated files can be deleted with "make clean".
 
 Builded DEMFIR can be install in three ways:
 
-1) Use ROM image (demfirXXXX.bin) and burn it with Zilog's permutor to EPROM or
-   use some universal ROM installer and install it to FLASH ROM or MAPRAM of
-   divIDE.
+1) Use ROM image (demfirXXXX_E.bin) and burn it with Zilog's permutor to EPROM
+   or use some universal ROM installer and install it to FLASH ROM of divIDE.
 
 2) Use .tap file (demfirXXXX.tap), which contains Zilog's universal installer
    and load it from tape. It automatically installs DEMFIR.
 
 3) Use ISO image (demfirXXXX.iso), burn it to RW or store it to CF, ZIPdrive or
    HDD. Insert this medium into DEMFIR, select .tap file (stored on ISO
-   filesystem) and run it (LOAD ""). This way need working DEMFIR so can be used
-   only for upgrade.
+   filesystem) and run it (LOAD ""). This way need working DEMFIR so can be
+   used only for upgrade.
 
-Press NMI. It detects IDE devices. Enjoy :)
+
+Since version 0.6 DMFIR takes two memory pages. It brings two demands:
+
+1) It can't run in MAPRAM and _MUST_ be loaded into EEPROM. MAPRAM _HAVE_NOT_
+   be active before booting second part. Used Zilog's flasher turn MAPRAM on
+   every time (even if fashing EEPROM) so after EEPROM flash ZXS have to be
+   turned off and on (the only way how turn MAPRAM off).
+
+2) After every turn on of ZXS is necessary to boot up second part. Until that
+   will not work tape emulator, cd browser and its parts (snap runners).
+   Booting is done from first avaiable ISO image which contain second part
+   (demfirXXXX_R.bin) as "generic boot image" i. e. placed from image's first
+   sector. As far as I know, this image can be created only with mkisofs and
+   it's option -G. Booting from "El-Torio" bootable image (created by K3b or
+   Nero) is not available yet. Supplied or builded (by make) ISO image
+   (demfirXXXX.iso) is created as bootable and can be used for booting. The
+   colour of DEMFIR version is red until successful boot then turn to green.
+   Version of both parts is compared during boot and when doesn't match boot is
+   not successful. It's important during DEMFIR upgrade via DEMFIR (way 3).
+   Recommended way: use different media, devices or two ISO images one after
+   another (first with currently installed version to boot from and second to
+   upgrade).
+
+
+Press NMI. It detects IDE devices. Let it search for boot image (if it's not at
+beginning of media) and you can start your work.

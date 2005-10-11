@@ -7,43 +7,43 @@
 
 ; build with .z80 files support
 ; prelozit s podporou souboru .z80
-WITH_Z80	equ	1
+WITH_Z80
 
 ; build with .sna files support
 ; prelozit s podporou souboru .sna
-WITH_SNA	equ	1
+WITH_SNA
 
 ; build with .mfc files support
 ; prelozit s podporou souboru .mfc
-WITH_MFC	equ	1
+WITH_MFC
 
 ; build with screen view (6144/6912)
 ; prelozit s prohlizecem obrazku (6144/6912)
-WITH_SCR	equ	1
+WITH_SCR
 
 ; build with text file viewer
 ; prelozit s prohlizecem textovych souboru
-;WITH_TXT	equ	1	; not working / nefunguje
+;WITH_TXT			; not working / nefunguje
 
 ; build with poke manager
 ; prelozit se "spravcem pouku"
-;WITH_POK	equ	1	; not working / nefunguje
+;WITH_POK			; not working / nefunguje
 
 ; build with support for old hdd without LBA
 ; prelozit s podporou starych disku bez LBA
-WITH_CHS	equ	1
+WITH_CHS
 
 ; build with support for WD Caviar hdd
 ; prelozit s podporou hdd WD Caviar
-WITH_WDC	equ	1
+WITH_WDC
 
 ; build with screen saver
 ; prelozit se sporicem obrazovky
-WITH_SS	equ	1
+WITH_SS
 
 ; build with screen capture
 ; prelozit s "tipacem obrazovek"
-;WITH_SC	equ	1	; not working / nefunguje
+;WITH_SC			; not working / nefunguje
 
 
 
@@ -53,17 +53,25 @@ WITH_SS	equ	1
 ; DEMFIR logo
 ; Which logo you can use (if none, only text line will be displayed)
 ; Jake logo pouzivat (pokud zadne, bude zobrazen pouze textovy radek)
-LOGO_F6	equ	1
-;LOGO_TNT	equ	1
+LOGO_F6
+;LOGO_TNT
 
+
+; DEMFIR font
+; This enables bold font from Didaktim M, if disabled, standard font will be used
+; Povoluje tucny font z Didaktiku M, jinak bude pouzit standardni
+;BOLD_FONT
 
 ; #### OTHER ####
 ; #### DALSI ####
 
 ; If you use device which suspend ifself (notebook HDD or CDROM) this causes DEMFIR will wait longer in I/O operations
 ; Pokud pouzivate zarizeni ktere "usina" (CDROM a HDD z notebooku), nastavenim tohoto prinutite DEMFIR cekat dele ve V/V operacich
-TOUT_LONG	equ	1
+;TOUT_LONG (obsoleted/not used)
 
+; If you have +2A/+3 machine with original ROM layout (two 32KB ROM chips), MUST be enabled. If you have modified +2A/+3 (32KB ROM and 32KB SRAM), MUST be disabled. For all other machines it's not important (enabled is more compatible).
+; Pokud mate +2A/+3 s originalnim rozlozenim ROM (dve 32KB pameti), MUSI byt povoleno. Pokud mate upravenou +2A/+3 (32KB ROM a 32KB SRAM), MUSI byt zakazano. Pro ostatni modely neni dulezite (povoleno je vice kompatibilni).
+ROM_2A_3
 
 ; nastaveni pro VI (tabulatory 5 znaku a filetype)
 ; vim:set ts=5 ft=z8asl:

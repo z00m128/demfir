@@ -1,11 +1,11 @@
 Pøeklad DEMFIRu:
 
-Pokud jste si stáhli nìjaké oèíslované vydání, mù¾ete rovnou pokraèovat èástí
+Pokud jste si stáhli nìjaké oficiální vydání, mù¾ete rovnou pokraèovat èástí
 "Pøelo¾ený DEMFIR lze nainstalovat...", v¹echny soubory máte vytvoøené.
 
 Potøebný SW
 - Linux nebo Unix, pøípadnì by mohlo staèit unixové prostøedí (napø. MinGW)
-- Systémové programy cat, awk, grep, tr, make, bash kompatibilí shell
+- Systémové programy cat, grep, tr, make, bash kompatibilí shell
 - mkisofs (balík cdrtools [http://www.fokus.gmd.de/research/cc/glone/employees/joerg.schilling/private/mkisofs.html])
 - Macroassembler AS [http://john.ccac.rwth-aachen.de:8000/as/] (minimálnì ve
   verzi 1.42, verzí 1.41rX _NENÍ_ mo¾né DEMFIR pøelo¾it)
@@ -19,12 +19,11 @@ Smazání v¹ech vygenerovaných souborù se provede pomocí 'make clean'.
 
 Pøelo¾ený DEMFIR lze nainstalovat tøemi základními zpùsoby:
 
-1) Pou¾ít ROM image (demfirXXXX.bin) a ten pomocí Zilogova permutoru vypálit
-   do EPROM, pøípadnì nìjakým univerzálním instalátorem nahrát do FLASH ROM
-   nebo MAPRAM divIDE.
+1) Pou¾ít ROM image (demfirXXXX_E.bin) a ten pomocí Zilogova permutoru vypálit
+   do EPROM, pøípadnì nìjakým univerzálním instalátorem nahrát do FLASH ROM.
 
-2) Pou¾ít tapku (demfirXXXX.tap), která obsahuje Zilogùv instalátor
-   a naèíst ji z magnetofonu. To automaticky nainstaluje DEMFIR.
+2) Pou¾ít tapku (demfirXXXX.tap), která obsahuje Zilogùv instalátor a naèíst ji
+   z magnetofonu. To automaticky nainstaluje DEMFIR.
 
 3) Pou¾í ISO image (demfirXXXX.iso), ten vypálit na RW nebo nahrát na CF,
    ZIPdrive èi HDD, toto médium naèíst v DEMFIRu, vybrat tapku a spustit ji
@@ -32,4 +31,30 @@ Pøelo¾ený DEMFIR lze nainstalovat tøemi základními zpùsoby:
    upgrade).
 
 
-Stiskem NMI proveïte detekci zaøízení a mù¾ete pracovat.
+Od verze 0.6 sídlí DEMFIR ve dvou stránkách (u¾ se do jedné neve¹el). To sebou
+pøiná¹í dvì "nepøíjemnosti":
+
+1) Nelze provozovat z MAPRAM a _MUSÍ_ být umístìn do EEPROM. Zároveò _NESMÍ_
+   být MAPRAM aktivní pøed nabootováním druhé èasti. Jeliko¾ pou¾itý Zilogùv
+   flasher nahazuje MAPRAM v¾dy (i kdy¾ se flashuje EEPROM), je tøeba po
+   naflashování vypnout a zapnout ZXS (jediný zpùsob jak se zbavit aktivovaného
+   MAPRAM).
+
+2) Po ka¾dém zapnutí ZXS je tøeba "nabootovat" druhou èást a dokud se tak
+   nestane, nejde pou¾ívat tape emulátor, cd browser a jeho souèásti (spou¹tìní
+   snapù). Bootování probíhá z prvního naèteného ISO image, který obsahuje
+   druhou èást (demfirXXXX_R.bin) jako "generic boot image", tj. umístìný od
+   poèátku ISO image. Toto umí pokud vím udìlat pouze mkisofs s parametrem -G.
+   Zatím není mo¾no bootovat podle "El-Torio normy" kterou podporují grafické
+   nástroje pro vytváøení CD (K3b, Nero). Dodávaný nebo vygenerovaný (pøes
+   make) ISO image (demfirXXXX.iso) je vytvoøen jako bootovací a je tedy mo¾né
+   ho pro tuto èinnost pou¾ít. Dokud není nabootováno, verze DEMFIRu v NMI menu
+   je vypsána èervenì, po nabootování zelenì. Je také kontrolována verze obou
+   èástí a pokud nesedí, boot není úspì¹ný. Na to pozor pøi "upgrade" DEMFIRu
+   DEMFIRem (zpùsob 3). Je tøeba mít rùzná média, zaøízení nebo dva image za
+   sebou (první s nainstalovanou verzí z kterého se nabootuje a druhý z kterého
+   se provede upgrade).
+
+
+Stiskem NMI proveïte detekci zaøízení, nechte vyhledat bootovací image (pokud
+není od zaèátku média) a mù¾ete zaèít pracovat.

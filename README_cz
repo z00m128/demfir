@@ -18,8 +18,8 @@ Fièury:
 - Detekce tupu souborù; obrázky podle délky, emulátorové soubory podle pøípony.
 - Prohlí¾ení barevných (6912 B) a èernobílých (6144 B) obrázkù s detekcí barvy
   borderu.
-- Spou¹tìní snapù SNA (48K i 128K)
-- Spou¹tìní snapù Z80 (verze 1.x, 2.x a 3.x) se zobrazením verze a typu.
+- Spou¹tìní snapù SNA (48K i 128K).
+- Spou¹tìní snapù Z80 (verze 1.x, 2.x a 3.x).
 - Spou¹tìní snapù MFC (48K i 128K).
 - Tape emulátor pro TAP soubory (read only = save není podporováno). Pøi
   zvolení TAPky v browseru je zobrazen obsah jako "virtuální" adresáø a je
@@ -64,13 +64,13 @@ S = sector  - umo¾òuje zadat èíslo sektoru, odkud se bude èíst ISO image,
               posunu pomocí 'SYMBOL SHIFT'). 'ENTER' vstup ukonèí a DEMFIR
               zadaný sektor pou¾ije jako ofset pro naètení ISO image (pokud se
               objeví 'No ISO image found', zkuste hledání.
-E = eject   - vysunutí média (pouze pro ATAPI tj. CDROM a ZIPdrive)
 V = VRAM    - zobrazí aktuální Video RAM (po stisku NMI je to v¾dy 1.),
               opakovaným stiskem klávesy 'V' lze pøepínat mezi 1. a 2. VRAM.
               Pokud bìhem zobrazování není 'V' sti¹tìno do dvou vteøin od
               poslední zmìny, aktuálnì zobrazená VRAM je nastavena pro Quit a
               DEMFIR se vrátí do NMI menu. Ve 48K re¾imu pouze zobrazí 1. VRAM,
               pøepínání není mo¾né.
+P = paging  - zaká¾e 128K stránkování (out 32765,48), pouze hw reset ho povolí.
 Enter       - vstup do browseru
 
 Ovládání browseru:
@@ -110,15 +110,14 @@ Ve tøetím øádku jsou ostatní moduly a nastavení
 - CHS = podpora pro HDD bez LBA, povoluje WITH_CHS v config.a80
 - WDC = automatické nastavování geometrie pøi detekci zaøízení, vy¾adují
         nìkteré disky Western Caviar, povoluje WITH_WDC v config.a80
-- LoT = Long Timeout, prodlou¾ený timeout pøi práci se zaøízením, nutné pro
-        nìkteré CDROM a HDD, pro CF mo¾no vypnout, povoluje TOUT_LONG v
-        config.a80
+- +3R = stránkuje ROM +2A/+3 na portu 8189, povoluje ROM_2A_3 v config.a80
 - SSv = spoøiè obrazovky (po dvou minutách zèerná obrazovka), povoluje WITH_SS
         v config.a80
 
 Logo lze zmìnit pomocí LOGO_TNT (pùvodní) nebo LOGO_F6 (nové a hezèí :), pokud
-nebude povoleno ani jedno, je logo nahrazeno textovým øádkem.
-
+není povoleno ani jedno, je logo nahrazeno textovým øádkem.
+Komu se nezdá originální zx font, povolením BOLD_FONT v config.a80 si mù¾e
+zapnout tuèný font z Didaktiku M.
 
     Tritol
 

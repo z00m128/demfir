@@ -1,3 +1,21 @@
+2005-??-??
+
+    * Release of version d0.6a (I can't help myself)
+    
+    * Fixed:
+    - improved tape emulator (some damned loaders should work now)
+    - reduced timeout in device detect and keep long for work (obsoletes TOUT_LONG)
+
+    * New:
+    - splitted to two parts, first is in EEPROM, second "boots" into MAPRAM
+    - font is in ROM again and should be standard or bold
+    - changed some printouts in snaps running etc.
+    - lot's of changed and modified code
+    - ROM paging of +2A/+3 can be disabled
+    - removed eject ATAPI device
+    - suppress run 128K snap in 48K mode
+
+
 2005-02-28
     
     * Release of version d0.5b (Damned IDE devices)

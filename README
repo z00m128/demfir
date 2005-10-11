@@ -19,15 +19,15 @@ Features:
 - Filetype autodetect. Screens by filelen, emulator files by extension.
 - View of coloured (6912 B) or monochrome (6144 B) pictures with detection of
   border colour.
-- Running SNA snapshots (48K and 128K) 
-- Running Z80 snapshots (versions 1.x, 2.x a 3.x) with version and type info.
-- Running MFC snapshots (48K and 128K)
-- Tape emulator for TAP files (read only = save not supported). After you select
-  TAP file in browser content is presented as "virtual" directory and you can
-  set "load cursor". If your program reads data with ROM rutines and there is
-  some active TAP file in DEMFIR (selected) all data is readed from IDE device.
-  If TAP file is not active, data is readed from standard tape input (with
-  default ROM routines).
+- Running SNA snapshots (48K and 128K). 
+- Running Z80 snapshots (versions 1.x, 2.x and 3.x).
+- Running MFC snapshots (48K and 128K).
+- Tape emulator for TAP files (read only = save is not supported). After you
+  select TAP file in browser content is presented as "virtual" directory and
+  you can set "load cursor". If your program reads data with ROM rutines and
+  there is some active TAP file in DEMFIR (selected) all data is readed from
+  IDE device. If TAP file is not active, data is readed from standard tape
+  input (with default ROM routines).
 - Modular architecture - some parts can be turned off at compile time and there
   will be space for some other modules.
 
@@ -63,12 +63,12 @@ S = sector  - with this function you can specify sector where ISO image is
               SHIFT'). 'ENTER' quits input mode and new sector number is used to
               read new ISO image (when you get 'No ISO image found' message, try
               searching).
-E = eject   - ejects the medium (ATAPI only)
 V = VRAM    - shows actual Video RAM (always 1st after NMI), next press of 'V'
               key swaps 1st and 2nd VRAM. If there is no keypress within two
               seconds after last keypress, displayed VRAM is set for Quit and
               DEMFIR returns to NMI menu. In 48K mode only shows 1st VRAM,
               switching doesn't work.
+P = paging  - disable 128K paging (out 32765,48), only hardware reset enable it.
 Enter       - starts file browser
 
 File browser controls:
@@ -81,7 +81,7 @@ right       - skip to end of the page, if cursor is already on the and, skip to
 Enter       - action = view of the picture (waits for any key), snapshot run,
               walk through directories or TAP files, "load cursor" set (depends
               on circumstances)
-Space       - file browser exit
+Space       - exits file browser
 
 
 When you working with TAP files, cursor goes green (everything is ok), red
@@ -108,14 +108,14 @@ Third line shows other modules and settings
 - CHS = support for HDD without LBA, enabled by WITH_CHS in config.a80
 - WDC = automatic geometry pre-set during device detection, required for some
         Western Caviar disks, enabled by WITH_WDC in config.a80
-- LoT = Long Timeout, extended timeout for devices, needed by some CDROMs and
-        HDDs, for CFs can be turned off, enabled by TOUT_LONG in config.a80
+- +3R = changes ROM of +2A/+3 via port 8189, enabled by ROM_2A_3 in config.a80
 - SSv = screen saver (blank screen after two minutes), enabled by WITH_SS in
         config.a80
 
 Logo can be selected by LOGO_TNT (older) or LOGO_F6 (new and much better), if
-no one is selected, instead of logo will be text line.
-
+no one is selected simple text line is used.
+If you don't like standard zx font, enable BOLD_FONT in config.a80 and you will
+get bold font from Didaktik M (czech speccy clone).
 
     Tritol
 

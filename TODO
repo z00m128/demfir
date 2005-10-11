@@ -1,9 +1,9 @@
-phase 1:
 - bugfixes
 - text view on any file
-
-phase 2:
 - search filenames in browser by typing letters
-- suppert for .pok files
+- "star eater"
+- support for .pok files
 - any kind of save?
 - better screensaver
+- Pentagon and Timex support
+- boot from El-Torio
