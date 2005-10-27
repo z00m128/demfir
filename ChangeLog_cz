@@ -1,19 +1,26 @@
-2005-??-??
+2005-11-05
 
-    * Release verze d0.6a (Nemù¾u si pomoct)
+    * Release verze d0.6a (Znovuzrození na narozeniny)
     
     * Opraveno:
     - vylep¹en tape emulátor (mìly by fungovat i nìkteré úchylné loadery)
     - zmen¹en timeout pøi detekci zaøízení a ponechán velký pro práci (ru¹í TOUT_LONG)
+    - chyba zpùsobující "èernou obrazovku" v browseru
 
     * Nové:
     - rozdìleno na dvì èásti, jedna v EEPROM, druhá se "bootuje" do MAPRAM
     - font je opìt souèástí ROM a lze si vybrat mezi standardním a tuèným
     - zmìnìny nìkteré výpisy pøi spou¹tìní snapù atd.
-    - spousta zmìnìného a upraveného kódu
     - stránkování ROM +2A/+3 mù¾e být zákázano
     - odebráno otevøení ATAPI zaøízení (eject)
+    - odebrán "spoøiè obrazovky"
     - zaká¾e spu¹tení 128K snapu v 48K módu
+    - poke manager (práce s .pok soubory i ruèní zadávání)
+    - zmìna výpisu souborù v browseru
+    - vylep¹eno opakování kláves
+    - plnohodnotný vstup dat (¾ádný "hebrejský syndrom" :)
+    - ve¹keré ètení kláves je teï s opakováním
+    - podivné zvuky (klávesové echo a chybový píp)
 
 
 2005-02-28

@@ -1,19 +1,26 @@
-2005-??-??
+2005-11-05
 
-    * Release of version d0.6a (I can't help myself)
+    * Release of version d0.6a (Reborn on birthday)
     
     * Fixed:
     - improved tape emulator (some damned loaders should work now)
     - reduced timeout in device detect and keep long for work (obsoletes TOUT_LONG)
+    - "blackscreen" bug in browser
 
     * New:
     - splitted to two parts, first is in EEPROM, second "boots" into MAPRAM
     - font is in ROM again and should be standard or bold
     - changed some printouts in snaps running etc.
-    - lot's of changed and modified code
     - ROM paging of +2A/+3 can be disabled
     - removed eject ATAPI device
+    - removed screensaver
     - suppress run 128K snap in 48K mode
+    - poke manager (support for .pok files and manual entry)
+    - browser layout change (file list)
+    - improved key repeat
+    - full featured data input (no "Hebrew syndrom" :)
+    - all keyboard scans are with key repeat
+    - strange sounds (key echo and error beep)
 
 
 2005-02-28

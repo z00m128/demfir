@@ -32,7 +32,7 @@
 		include "config.a80"
 
 ;DVERS	equ	"d0.6a"
-DVERS	equ	"51011"
+DVERS	equ	"51027"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -81,11 +81,15 @@ ANY_SNAP
 
 ;pocet "petivterin", po kolika se se nahodi pripadny screensaver
 ;(skutecne jednotky jsou 256 preruseni)
-SSAVER	equ	120/5
+;screensaver removed
+;SSAVER	equ	120/5
 
 ;konstanty opakovani klaves
 CON_REP	equ	6
 CON_DEL	equ	36
+
+;delka klavesoveho echa (ZXS 0, DG neco kolem 30)
+CLICKLEN	equ	0
 
 ;timeouty pro ide device
 ;	ifdef TOUT_LONG
@@ -157,25 +161,6 @@ SNATMP	equ	23296	;16384+6912
 
 ;docasna pamet pri hledani druhe casti (boot)
 BOOTMEM	equ	49152
-
-
-	ifdef WITH_POK
-;25 zaznamu, odkazy do POKDATA
-;defw adresa "traineru", 0 prazdno (konec)
-;POKTAB	equ	8192
-POKTAB	equ	49152
-
-;vyctena data o poke + aktualni platnost
-POKDATA	equ	2*25+POKTAB
-;defs 28 jmeno
-;defb page (0 konec seznamu, +8 ignorovat, or 64+16)
-;defw adresa
-;defb poke hodnota
-;defb dotazovat se na hodnotu (0=ne, jinak ano)
-;defb puvodni hodnota z .pok (0 neznamo)
-;defb puvodni hodnota z pameti
-	endif
-
 
 ;s jakym IDE zarizenim pracovat
 ;0=master, 16=slave
@@ -271,7 +256,7 @@ ACTPRINT	equ	CACHEREM-3
 PRINTPOZ	equ	ACTPRINT-3
 ;aktualni atribut
 ACTATTR	equ	PRINTPOZ-1
-;priznak inverze (0=ne,1=ano)
+;priznak inverze (0=ne,255=ano)
 ATTRINV	equ	ACTATTR-1
 
 ;kontrolni soucet ROM, pokud nesedi, inicializace
@@ -280,18 +265,23 @@ ROMCRC	equ	ATTRINV-2
 ;relativni LBA zacatek iso img.
 ISOSTART	equ	ROMCRC-4
 
-;misto pro data pri cteni kl.
+;misto pro data pri cteni klaves
 REPPER	equ	ISOSTART-1
 LASTKEY	equ	REPPER-1
 
-;buffer pro inphase
-IMPBUFF	equ	LASTKEY-7
+;buffer pro input
+INPBUFF	equ	LASTKEY-13		;3+2 a 11+2 pro POK, 7+2 pro LBA
+
+;kam kreslit kurzor pri inkeys (0=nikam)
+IKURPOS	equ	INPBUFF-2
+
+;misto pro ukladani minule honoty pri blikani kurzorem
+IKURINT	equ	IKURPOS-1
 
 ;misto pro registry AY
-AYREGS	equ	IMPBUFF-16
+AYREGS	equ	IKURINT-16
 
-;uchovani DE pri volani ZX ROM
-;fixme je potreba?
+;uchovani DE pri volani druhe ROM
 TMPDE	equ	AYREGS-2
 
 ;0=DI, 255=EI
@@ -311,8 +301,9 @@ SNAPC	equ	ACTPAGE-2
 SNAPAGE	equ	SNAPC-1
 
 ;promenne pro praci s casem (musi byt takhle za sebou)
-SSTIMER	equ	SNAPAGE-1	;casovac screensaveru
-INTCNT	equ	SSTIMER-2
+;screensaver removed
+;SSTIMER	equ	SNAPAGE-1		;casovac screensaveru
+INTCNT	equ	SNAPAGE-2		;pocitadlo preruseni (jede porad dokola)
 
 ;priznak spravne druhe casti ("bootuje" se)
 ;0=neni, 2=je (2 kuli snadnemu vypisu)
@@ -331,9 +322,30 @@ BUFFER	equ	CACHE+2048
 ;misto pro odkazy do adresare 2*293 polozek + 2 konc. znaky (588B)
 INDEX	equ	BUFFER+4096
 
-ENDCACHE	equ	INDEX+588
+	ifdef WITH_POK
+;24+1 zaznamu, odkazy do POKDATA
+;defw adresa "traineru", 0 prazdno (konec)
+POKCUR	equ	INDEX+588
+POKTAB	equ	POKCUR+1
+;POKTAB	equ	49152
 
-FREERAM0	equ	ENDVRS-ENDCACHE
+;vyctena data o poke + aktualni platnost
+POKDATA	equ	2*25+POKTAB
+;defs 28 name
+;defb status 0.bit=ask 1.bit=active 3.-5.bit cursor colour
+;defb page (0 konec seznamu, +8 ignorovat stranku, or 64+16)
+;defw adresa
+;defb poke hodnota
+;defb puvodni hodnota z .pok (0 neznamo)
+;misto pro 24 zaznamu s jednou hodnotou nebo min zaznamu s vice hodnotami
+POKEND	equ	35*24+POKDATA		;pocita s koncovymi znackami
+;POKEND	equ	INDEX+588
+	else
+POKEND	equ	INDEX+588
+	endif
+
+
+FREERAM0	equ	ENDVRS-POKEND
 
 
 ;prvni cast, iso "driver" & zakladni rutiny
@@ -375,10 +387,12 @@ RST24ENDE
 		org	31
 		defb	24			;jr 66 (ROMINTE)
 
-;rst 32 - nastaveni casovace pro screensaver
-		ld	hl,SSAVER
-		ld	a,l
-		ld	(SSTIMER),a
+;rst 32 - volno
+		ld	hl,0			;musi byt kuli predesle adrese
+;screensaver removed
+;		ld	hl,SSAVER
+;		ld	a,l
+;		ld	(SSTIMER),a
 		ret
 RST32ENDE
 
@@ -416,14 +430,18 @@ ROMINTE	push	af
 		jr	nz,INT1E
 		inc	hl
 		inc	(hl)
-		inc	hl
-		ld	a,(hl)
-		or	a
-		jr	z,INT1E
-		dec	(hl)
+;screensaver removed
+;		inc	hl
+;		ld	a,(hl)
+;		or	a
+;		jr	z,INT1E
+;		dec	(hl)
 INT1E	pop	hl
 		pop	af
 		ei
+		ret
+
+		org	85
 ;sem pri NMI pri pristrankovanem DEMFIRu
 ;a pouziva i depak LOGA (detekce adresy)
 		ret				;musi byt na adrese 85!!!
@@ -694,7 +712,7 @@ CLS		push	hl
 ;vyplneni atributu obs. reg. A
 ATRIB	ld	hl,22528
 		ld	bc,767
-;vyplneni BC bajtu od HL obsahem A
+;vyplneni BC+1 bajtu od HL obsahem A
 ;meni DE
 FILLBYTE	ld	(hl),a
 		ld	d,h
@@ -755,29 +773,10 @@ PROHOD1
 		pop	hl
 		ret
 
-;vrati v HL a IX adresu souboru v bufferu
-;v DE adresu polozky v indexu
-GETFILE	ld	a,(POZICE)
-		add	a,a
-		ld	hl,(VYPIS)
-		ld	c,a
-		ld	b,0
-		add	hl,bc
-		ld	e,(hl)
-		inc	hl
-		ld	d,(hl)
-		dec	hl
-		ex	de,hl
-		push	hl
-		pop	ix
-		ret
-
 
 ;vytiskne delku v HLDE
-;v A znak pro tisk nevyznamnych
-;nul, 0=netisknout
-;v reg B vraci pismeno jednotek
-;(B, K nebo M)
+;v A znak pro tisk nevyznamnych nul, 0=netisknout
+;tiskne jednotku (B/K/M), v c vraci desetiny
 PRSIZE	ld	bc,'B'*256+0
 		ex	af,af'
 		ld	a,e
@@ -795,14 +794,16 @@ PRLEN	push	bc
 		ld	c,a
 		call	PRINTHL2
 		pop	bc
-		ld	a,c
-		or	a
-		ret	z
-		ld	a,'.'
+		ld	a,' '
 		rst	16
-		ld	a,'0'
-		add	a,c
+		ld	a,b
 		rst	16
+;		ld	a,c
+;		or	a
+;		ret	z
+;		ld	a,'0'
+;		add	a,c
+;		rst	16
 		ret
 
 ;prevede cislo v DEHL na vyssi
@@ -896,41 +897,73 @@ GETINDSM
 ;(ceka) s autorepeatem
 ;potrebuje povolene preruseni
 ;hodnota v A a D
-INKEYS	halt
+INKEYS3	ld	a,CON_DEL
+		ld	(REPPER),a
+		xor	a
+		ld	(LASTKEY),a
+INKEYS	ld	hl,(IKURPOS)
+		ld	a,h
+		or	l
+		jr	z,INKEYS4
+		ld	a,(IKURINT)
+		ld	c,a
+		and	16
+		ld	b,a
+		ld	a,(INTCNT)
+		ld	c,a
+		and	16
+		xor	b
+		jr	z,INKEYS4
+		ld	a,c
+		ld	(IKURINT),a
+		ld	b,8
+INKUR	ld	a,(hl)
+		xor	1
+		ld	(hl),a
+		inc	h
+		djnz	INKUR
+INKEYS4	halt
 		ld	a,(REPPER)
 		dec	a
 		jr	z,DOBA
 		ld	(REPPER),a
 DOBA		call	KEYSCAN
-		jr	nz,INKEYS
+		jr	nz,INKEYS3
 		ld	a,e
 		inc	a
-		jr	z,INKEYS
-;shifty nepotrebujem
+		jr	z,INKEYS3
+;pouze CAPS SHIFT
+		ld	a,d
+		ld	hl,KEYSSHTAB
+		cp	$27
+		jr	z,INKEYS2
 		ld	hl,KEYSTAB
-		ld	d,0
+INKEYS2	ld	d,0
 		add	hl,de
 		ld	a,(hl)
 		or	a
-		jr	z,INKEYS
+		jr	z,INKEYS3
 		ld	hl,LASTKEY
-		ld	d,a
 		cp	(hl)
-		jr	nz,MINNE
+		jr	z,MINANO
+		ld	(hl),a
+		jr	INKEYSPOL
+
+MINANO	ld	d,a
 		ld	a,(REPPER)
 		dec	a
 		jr	nz,INKEYS
 		ld	a,CON_REP
-KEYSPOL	ld	(REPPER),a
+		ld	(REPPER),a
 		ld	a,d
+INKEYSPOL	push	af
+		call	CLICK
+		pop	af
+		ld	d,a
 		ret
 
-MINNE	ld	(hl),a
-		ld	a,CON_DEL
-		jr	KEYSPOL
 
-
-;program z ROM (adr $28E)
+;program z ROM (adr $28E) - cteni klavesnice
 KEYSCAN	ld	l,$2F
 		ld	de,$FFFF
 		ld	bc,$FEFE
@@ -964,6 +997,337 @@ KEYDONE	dec	l
 		cp	$18
 		ret
 
+;beep
+BEEPE	push	hl
+		push	af			;potrebujem zachovat flagy kuli snadnemu volani
+		ld	de,256
+		ld	hl,384
+		call	BEEPER
+		pop	af
+		pop	hl
+		ret
+
+;klavesove echo
+CLICK	ld	de,CLICKLEN
+		ld	hl,$C8
+;program z ROM (adr $3B5) - generovani tonu (beep)
+BEEPER	di
+		push	ix
+		ld	a,l
+		srl	l
+		srl	l
+		cpl
+		and	3
+		ld	c,a
+		ld	b,0
+		ld	ix,BEIX3
+		add	ix,bc
+		ld	a,8;+1		;fixme - debug
+BEIX3	nop
+BEIX2	nop
+BEIX1	nop
+BEIX0	inc	b
+		inc	c
+BEHLLP	dec	c
+		jr	nz,BEHLLP
+		ld	c,$3f
+		dec	b
+		jp	nz,BEHLLP
+		xor	$10
+		out	(254),a
+		ld	b,h
+		ld	c,a
+		bit	4,a
+		jr	nz,BEAGAIN
+		ld	a,d
+		or	e
+		jr	z,BEEND
+		ld	a,c
+		ld	c,l
+		dec	de
+		jp	(ix)
+
+BEAGAIN	ld	c,l
+		inc	c
+		jp	(ix)
+
+BEEND	pop	ix
+		ei
+		ret
+
+
+;vytiskne parametry souboru
+;(je tady aby se porad nestrankovaly ROMky)
+FILEPARM	rst	24
+		defb	22,23,128
+		ld	l,(ix+10)
+		ld	h,(ix+11)
+		ld	e,(ix+12)
+		ld	d,(ix+13)
+		ld	a,' '
+		call	PRSIZE
+		rst	24
+		defb	23,15,128
+		ld	l,(ix+18)
+		ld	h,0
+		ld	bc,1900
+		add	hl,bc
+		call	PRINTHL
+		ld	a,'-'
+		rst	16
+		ld	l,(ix+19)
+		call	PRINTL2
+		ld	a,'-'
+		rst	16
+		ld	l,(ix+20)
+		call	PRINTL2
+		ld	a,' '
+		rst	16
+		ld	l,(ix+21)
+		call	PRINTL2
+		ld	a,':'
+		rst	16
+		ld	l,(ix+22)
+		jp	PRINTL2
+		
+;precte cislo v textove podobe z adresy DE
+;vysledek v HLIY, na (DE) prvni neplatny znak
+;vynecha mezery na zacatku
+;a konci ma prvnim neplatnem znaku
+ATOLH	ld	a,(de)
+		inc	de
+		cp	' '
+		jr	z,ATOLH
+		dec	de
+		ld	hl,0
+		push	hl
+		pop	iy
+ATOLH2	ld	a,(de)
+		sub	'0'
+		ret	c
+		cp	10
+		jr	c,ATOLH3
+		or	32				;na mala pismena
+		sub	'a'-'9'-1
+		ret	c
+		cp	16
+		ret	nc
+;v A je 0-15
+ATOLH3	inc	de
+;nasob HLIY 16x
+		add	iy,iy
+		adc	hl,hl
+		add	iy,iy
+		adc	hl,hl
+		add	iy,iy
+		adc	hl,hl
+		add	iy,iy
+		adc	hl,hl
+;pricti soucasne cislo
+		add	a,iyl
+		ld	iyl,a
+		jr	ATOLH2
+
+;vstup jedne radky textu
+;DE - ukazatel na buffer zacinajici a ukonceny bytem 160 (inv. mezera)
+;IY - tiskova pozice (x*256+y)
+;HL - pozice kurzoru v bufferu (adresa) 0=najdi konec
+;buffer musi mit alespon 2 platne znaky (4B)
+;volajici kod musi po navratu ulozit 0 na IKURPOS (2B)
+;Ovladani:
+;CS+1 - exit (navrat s carry)
+;CS+2 - clear entry
+;CS+3 - nic (zatim volne)
+;CS+4 - insert (vlozi mezeru za kurzor)
+;CS+5 - left
+;CS+6 - home
+;CS+7 - end
+;CS+8 - right
+;CS+9 - delete
+;CS+0 - backspace
+INPUT	ld	de,INPBUFF
+INPUTDE	ld	a,h
+		or	l
+		jr	nz,INPUT3			;nehledej konec
+		ld	l,e
+		ld	h,d
+		call	INPUTFEND
+		inc	hl
+;najdem posledni platny znak
+INPUT2	dec	hl
+		ld	a,(hl)
+		bit	7,a
+		jr	nz,INPUT3
+		cp	' '
+		jr	z,INPUT2
+INPUT3	ld	c,l
+		ld	b,h				;pozice kurzoru
+;vypisem co mame
+INPUT4	ld	l,e
+		ld	h,d
+		ld	a,22
+		rst	16
+		ld	a,iyu
+		rst	16
+		ld	a,iyl
+		rst	16
+		ld	a,' '
+		rst	16
+INPUTSM1	inc	hl
+		bit	7,(hl)
+		jr	nz,INPUT5
+		ld	a,(hl)
+		rst	16
+		jr	INPUTSM1
+		
+;spocitame kam kreslit input kurzor
+INPUT5	ld	a,iyu
+		add	a,a
+		ld	hl,ADRVRAM
+		add	a,l
+		ld	l,a
+		jr	nc,INPUT6
+		inc	h
+INPUT6	push	hl
+		ld	l,c
+		ld	h,b
+		or	a
+		sbc	hl,de			;od kurzoru zacatek bufferu
+		ld	a,l				;vzdy min jak 256
+		pop	hl
+		add	a,(hl)			;posun v radku nepretece
+		inc	hl
+		ld	h,(hl)
+		add	a,iyl			;posun v radku nepretece
+		ld	l,a
+		ld	(IKURPOS),hl
+INPUTSM2	push	de
+		push	bc
+		call	INKEYS
+		pop	bc
+		pop	de
+		ld	l,c
+		ld	h,b
+		cp	32
+		jr	nc,INPCHAR
+		sub	5				;CS+4
+		jr	nz,INCTRL0
+;insert
+		call	INPUTFEND
+		ld	a,(hl)
+		cp	' '
+		jr	nz,INCTRL2		;neni kam vkladat
+INPINS	scf					;dec hl
+		sbc	hl,bc
+		add	hl,bc
+		jr	z,INPINS2
+		ld	a,(hl)
+		inc	hl
+		ld	(hl),a
+		dec	hl
+		jr	INPINS
+
+INPINS2	inc	hl
+		ld	(hl),32
+		jr	INPUT4
+
+INCTRL0	dec	a				;CS+2
+		jr	nz,INCTRL1
+;vymazani bufferu (vyplneni mezerami)
+		ld	l,e
+		ld	h,d
+		ld	c,l
+		ld	b,h
+		inc	hl
+		ld	a,32
+INPCLR	bit	7,(hl)
+		jr	nz,INPUT4
+		ld	(hl),a
+		inc	hl
+		jr	INPCLR
+
+INCTRL1	dec	a				;CS+1 (edit)
+		scf
+		ret	z
+		dec	a				;CS+5
+		jr	nz,INCTRL2
+;kurzor vlevo
+		bit	7,(hl)
+		jr	nz,INPUTSM2
+		dec	hl
+		jr	INPUT3
+
+INCTRL2	dec	a				;CS+8
+		jr	nz,INCTRL3
+;kurzor vpravo
+		inc	hl
+		bit	7,(hl)
+		jr	nz,INPUTSM2
+		jp	INPUT3
+
+INCTRL3	dec	a				;CS+6
+		jr	nz,INCTRL4
+;home
+		ld	c,e
+		ld	b,d
+		jp	INPUT4
+
+INCTRL4	dec	a				;CS+7
+		jr	nz,INCTRL5
+;end
+		call	INPUTFEND
+		jp	INPUT3
+
+INCTRL5	dec	a				;CS+0
+		jr	nz,INCTRL6
+;backspace
+		bit	7,(hl)
+		jr	nz,INPUTSM2		;na zacatku nepracuje
+		dec	bc
+		jr	INPDEL
+
+INCTRL6	or	a				;set nc
+		dec	a				;ENTER
+		ret	z
+		dec	a				;CS+9
+		jr	nz,INPUTSM2
+;delete
+		inc	hl
+		bit	7,(hl)
+		jr	nz,INPUTSM2		;na konci nepracuje
+INPDEL	inc	hl
+		bit	7,(hl)
+		jr	nz,INPDEL2
+		ld	a,(hl)
+		dec	hl
+		ld	(hl),a
+		inc	hl
+		jr	INPDEL
+
+INPDEL2	dec	hl
+		ld	(hl),32
+		jp	INPUT4
+
+;obyc. znak
+INPCHAR	inc	hl
+		bit	7,(hl)
+		jp	nz,INPUTSM2
+		ld	(hl),a
+		jp	INPUT3
+
+
+;najde konec input bufferu (ukazuje na posledni platny znak)
+INPUTFEND	inc	hl
+		bit	7,(hl)
+		jr	z,INPUTFEND
+		dec	hl
+		ret
+
+
+
+;fixme! spousta mista tu je
+
+
 
 
 BEF_SVBE
@@ -979,7 +1343,13 @@ GAP_SVBE	equ	$-BEF_SVBE
 		jp	TOBASROM
 ;konec odchyceni save
 
+
+
+
 ;fixme! spousta mista tu je
+
+
+
 
 BEF_LDBE
 ;odchyceni load (jen pokracuje zpet v ZX ROM)
@@ -999,7 +1369,7 @@ GAP_LDBE	equ	$-BEF_LDBE
 ;pocka par preruseni, aby hned
 ;nezabraly testy klaves
 NOSIFR	halt
-		halt
+NOSIFR2	halt
 		halt
 		halt
 		halt
@@ -1011,7 +1381,7 @@ LBAS		ld	hl,(ISOSTART+2)
 		call	PRNT12HX
 		ld	hl,(ISOSTART)
 		call	PRNT16HX
-		ld	a,'/'
+LBAS2	ld	a,'/'
 		rst	16
 		ld	h,(ix+37)
 		ld	l,(ix+36)
@@ -1166,9 +1536,10 @@ INFO4	rst	16
 ;	ifdef TOUT_LONG
 ;		defb "LoT "
 ;	endif
-	ifdef WITH_SS
-		defb "SSv "
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		defb "SSv "
+;	endif
 	ifdef WITH_SC
 		defb "SCp "
 	endif
@@ -1267,7 +1638,8 @@ INITD3X
 		jr	z,MEDNOTP
 		ld	hl,(TAPLEN2)
 		ld	de,(TAPLEN2+2)
-		call	TISKSIZE
+		xor	a
+		call	PRSIZE
 		rst	24				;call PRINTSP
 		defb	13,16,5+128
 		ld	hl,TAPNAME
@@ -1306,7 +1678,8 @@ JEMEDIUM
 		ex	de,hl
 		adc	hl,hl
 		ex	de,hl
-		call	TISKSIZE
+		xor	a
+		call	PRSIZE
 		rst	24				;call PRINTSP
 		defb	22,17,16,16,4+128
 		ld	a,(MEDSIZE+7)
@@ -1353,33 +1726,25 @@ SPOLMED	ld	a,16
 		defb "ram"
 		defb	20,1,"P",20,0
 		defb	"gng"
+	ifdef WITH_POK
+		defb 20,1,"C",20,0
+		defb	"ht"
+	endif
 		defb	20,1
 		defb	"Ent"
 		defb	20,128
 
 		ei
-NMIKEYS	halt
-	ifdef WITH_SS
-		ld	a,(SSTIMER)
-		or	a
-		jr	nz,NMIK2
-		call	DEMFSS
-		jp	NMIMENU
-	endif
-
-NMIK2	call	KEYSCAN
-		jr	nz,NMIKEYS
-		ld	a,e
-		inc	a
-		jr	z,NMIKEYS
-	ifdef WITH_SS
-		rst	32
-	endif
-;shifty nepotrebujem
-		ld	hl,KEYSTAB
-		ld	d,0
-		add	hl,de
-		ld	d,(hl)
+;screensaver removed
+;	ifdef WITH_SS
+;		ld	a,(SSTIMER)
+;		or	a
+;		jr	nz,NMIK2
+;		call	DEMFSS
+;		jp	NMIMENU
+;	endif
+NMIKEYS	call	INKEYS
+		set	5,d
 		ld	hl,NMIPROG
 NMIK4	ld	a,(hl)
 		or	a
@@ -1418,6 +1783,7 @@ FLASH	push	hl
 		push	bc
 		ld	a,2+64+128
 		call	FILLBYTE
+		call	BEEPE
 		ld	b,100
 FLASH2	halt
 		djnz	FLASH2
@@ -1431,14 +1797,14 @@ FLASH2	halt
 MEDIUM	ld	a,(ix+33)
 		or	a
 		jr	z,NOMED
-		call	NOSIFR
+;		call	NOSIFR
 		jp	NEWMED
 
 ;find image
 FINDIMG	ld	hl,FINDISO
 		jr	SPOLISO
 
-;sector (inphase)
+;zadani sectoru kde hledat iso
 SECTIMP	ld	hl,INPUTSEC
 SPOLISO	ld	a,(ix+33)
 		or	a
@@ -1455,7 +1821,7 @@ ENTBROWS	ld	a,(GPART2)
 		or	a
 		jr	nz,ENTBROWS2
 ;zablikame verzi (neni pritomna druha cast)
-		ld	hl,3*32+22528+26
+NOTPT2	ld	hl,3*32+22528+26
 		ld	bc,4
 		jr	FLASH
 
@@ -1471,8 +1837,17 @@ NOENT	ld	hl,17*32+22528+16
 		ld	bc,12
 		jr	FLASH
 
+;prechod do poke manageru
+ENTPOKMAN	ld	a,(GPART2)
+		or	a
+		jr	z,NOTPT2
+		rst	40
+		defw	POKEMAN
+		jp	NMIMENU
+
 ;change device (master/slave)
-CHDEV	call	NOSIFR
+CHDEV
+;		call	NOSIFR
 		ld	a,(DEVICE)
 		xor	16
 		jp	NEWMED2
@@ -1501,15 +1876,16 @@ QUITAY	ld	a,(hl)
 		bit	7,a
 		jr	nz,TSTIM2
 		out	(253),a
+TSTIM2	
+;vratime puvodni obsah VRAM
+		call	POPSCR
+		di
 ;bylo im2?
-TSTIM2	ld	a,(JEIM2)
+		ld	a,(JEIM2)
 		or	a
 		jr	nz,NEIM2
 		im	2
-;vratime puvodni obsah pameti
-NEIM2	call	POPSCR
-		di
-		ld	a,BACKPAGE
+NEIM2	ld	a,BACKPAGE
 		jp	QUIT2E			;pokracujem casti ktera je stejna v obou ROM
 		
 ;reset
@@ -1529,7 +1905,7 @@ VRAMSEL1	ld	c,a
 		and	127
 		out	(253),a
 		ld	b,25				;25*4 preruseni (2 sec)
-VRAMSEL2	call	NOSIFR
+VRAMSEL2	call	NOSIFR2
 		ld	a,254			;klavesa "V"
 		in	a,(254)
 		bit	4,a
@@ -1542,9 +1918,10 @@ VRAMSEL3	djnz	VRAMSEL2
 		ld	(ACTPAGE),a
 		and	127-8			;vzdy 1. VRAM
 		out	(253),a
-	ifdef WITH_SS
-		rst	32
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		jp	NMIMENU
 
 ;zakazani 128k strankovani
@@ -1552,7 +1929,7 @@ DIPAGING	ld	a,48+64			;kratky out
 		out	(253),a
 		ld	a,128
 		ld	(ACTPAGE),a
-		call	NOSIFR
+;		call	NOSIFR
 		jp	NMIMENU
 
 
@@ -1882,9 +2259,10 @@ DOCRCE	xor	a
 		ld	(ROMCRC),hl
 CRCOKE
 ;init screenseveru
-	ifdef WITH_SS
-		rst	32
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		ld	a,BACKPAGE
 		out	(RAMPORT),a
 		ld	hl,1
@@ -1914,17 +2292,35 @@ DEL_CHS2	dec	e
 
 
 
-	ifdef WITH_SS
-;screen saver (blank only)
-DEMFSS	call	CLS
-SSWTK	xor	a
-		in	a,(254)
-		cpl
-		and	31
-		jr	z,SSWTK
-		rst	32	;nastaveni citace
-		ret
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;screen saver
+;DEMFSS	xor	a
+;		call	ATRIB
+;DEMFSS3	ld	bc,100*256+23
+;DEMFSS2	dec	b
+;		jr	nz,DEMFSS4
+;		dec	c
+;		jr	z,DEMFSS3
+;		push	bc
+;		xor	a
+;		call	ATRIB
+;		pop	bc
+;		ld	a,22
+;		rst	16
+;		ld	a,c
+;		rst	16
+;		rst	24
+;		defb	0,16,1,"I'm Screen Saver. Press any key", '.'+128
+;DEMFSS4	halt
+;		xor	a
+;		in	a,(254)
+;		cpl
+;		and	31
+;		jr	z,DEMFSS2
+;		rst	32	;nastaveni citace
+;		ret
+;	endif
 
 ;detekce zarizeni
 TSTATAPI	ld	a,CIDENTA
@@ -2009,16 +2405,18 @@ CHSINIT	ld	a,(BUFFER+6)		;heads
 		ld	bc,17
 		ld	hl,CHSSUCC
 		ldir
-		push	de
-		pop	ix
+		ld	c,e
+		ld	b,d
 		ld	hl,(BUFFER+2)
 		call	STOR16DC
-		ld	(ix+0),'/'
-		inc	ix
+		ld	a,'/'
+		ld	(bc),a
+		inc	bc
 		ld	hl,(BUFFER+6)
 		call	STOR6DC
-		ld	(ix+0),'/'
-		inc	ix
+		ld	a,'/'
+		ld	(bc),a
+		inc	bc
 		ld	hl,(BUFFER+12)
 		jp	STOR6DC
 		
@@ -2124,105 +2522,48 @@ GETPRMA	ld	hl,READCAP
 		ld	(ix+37),h
 		ret
 
-;umozni uzivateli zadat prvni
-;sektor iso image
-INPUTSEC
-		rst	24				;call PRINTSP
-		defb	22,17,16,16,7+128
-		call	LBAS
-		push	ix
-		ld	ix,IMPBUFF
-		ld	hl,(ISOSTART+2)
-		call	STOR12HX
-		ld	hl,(ISOSTART)
-		call	STOR16HX
-		pop	ix
-INPUTAG
-		ld	b,7
-		ld	de,17*32+22528+22
-		ld	hl,IMPBUFF+6
-INPUTSC2
-		push	hl
-		ld	c,b
-		rst	24				;call PRINTSP
-		defb	22,17,16+128
-		ld	b,7
-		ld	hl,IMPBUFF
-		call	PRINTB
-		ld	b,c
-		pop	hl
-		ex	de,hl
-		ld	(hl),8*4+64
-		ex	de,hl
-INPUTSC3
-		push	hl
-		push	de
-		push	bc
-		call	INKEYS
-		pop	bc
-		pop	de
-		pop	hl
-		cp	32
-;posun na dalsi znak
-		jr	z,INPUTSC4
-		cp	12
-;skok na predchazejici znak
-		jr	z,INPUTDEL
-		cp	13
-;konec vstupu
-		jr	z,INPUTEND
-;INKEYS vraci jen cisla a velka
-;pismena, proto nemusi byt test
-;uplny
-		cp	'F'+1
-		jr	nc,INPUTSC3
-		ld	(hl),a
-INPUTSC4
-		dec	hl
-		dec	de
-		djnz	INPUTSC2
-		jr	INPUTAG
-
-INPUTDEL	ld	a,b
-		cp	7
-;nefunguje na zacatku
-		jr	z,INPUTSC3
-		inc	b
+;umozni uzivateli zadat prvni sektor iso image
+INPUTSEC	rst	24				;call PRINTSP
+		defb	22,17,23,16,7+128
+		call	LBAS2
+		ld	hl,INPBUFF
+		ld	(hl),' '+128		;znacka zacatku
 		inc	hl
-		inc	de
-		jr	INPUTSC2
-
-INPUTEND
-		push	ix
-		ld	de,IMPBUFF
+		push	hl
 		ld	b,7
-		ld	ix,0
-		ld	hl,0
-INEND2
-		ld	a,(de)
-		sub	'0'
-		cp	10
-		jr	c,INEND3
-		sub	'A'-'9'-1
-;v A je 0-15
-INEND3
-;nasob HLIX 16x
-		add	ix,ix
-		adc	hl,hl
-		add	ix,ix
-		adc	hl,hl
-		add	ix,ix
-		adc	hl,hl
-		add	ix,ix
-		adc	hl,hl
-;pricti soucasne cislo
-		add	a,ixl
-		ld	ixl,a
-		inc	de
-		djnz	INEND2
-		push	ix
+		ld	a,32
+INPUTSEC4	ld	(hl),a
+		inc	hl
+		djnz	INPUTSEC4
+		ld	(hl),' '+128		;znacka konce
 		pop	bc
-		pop	ix
+		ld	iyl,0			;nepis nevyzname nuly
+		ld	hl,(ISOSTART+2)
+		ld	a,l
+		or	h
+		call	nz,STO16HX2		;pouze pokud neni 0
+		ld	hl,(ISOSTART)
+		call	STO16HX2			;pokud uz jednou probehlo, bude v iyl znak 0
+;		call	NOSIFR
+INPUTSEC5	ld	hl,0
+INPUTSEC2	ld	iy,17*256+15		;pozice
+		call	INPUT
+		ld	hl,0				;zruseni blikani kurzoru
+		ld	(IKURPOS),hl
+		ret	c				;stisteno 'edit'
+		inc	de				;zustalo od inputu
+		call	ATOLH
+;pokud se neprecetlo vsechno, znovu
+		ld	a,(de)
+		cp	' '
+		jr	z,INPUTSEC3
+		bit	7,a
+		ex	de,hl
+		call	z,BEEPE
+		jr	z,INPUTSEC2		;kurzor tam kde chyba
+		ex	de,hl
+INPUTSEC3	push	iy
+		pop	bc
 ;nezadano vic nez maximum?
 		ld	d,(ix+37)
 		ld	e,(ix+36)
@@ -2232,15 +2573,21 @@ INEND3
 		ex	de,hl
 		jr	c,IVALOK
 ;je mensi, ne konec
-		jp	nz,INPUTAG
+		call	nz,BEEPE
+		jr	nz,INPUTSEC5
 ;rovnaji se, dolni pulka
 		ld	h,(ix+35)
 		ld	l,(ix+34)
 		or	a
 		sbc	hl,bc
-		jp	c,INPUTAG
+		call	c,BEEPE
+		jr	c,INPUTSEC5
 IVALOK	ld	(ISOSTART),bc
 		ld	(ISOSTART+2),de
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		ret
 
 
@@ -2340,9 +2687,10 @@ FINDISO4	ld	a,(de)
 		dec	bc
 FINDISO7	ld	(ISOSTART),de
 		ld	(ISOSTART+2),bc
-	ifdef WITH_SS
-		rst	32
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		ret
 
 FINDISO5	pop	de
@@ -2502,14 +2850,6 @@ RDYCHNG	ld	a,(STATUS)
 		or	a
 		ret
 
-
-TISKSIZE	xor	a
-		call	PRSIZE
-		ld	a,32
-		rst	16
-		ld	a,b
-		rst	16
-		ret
 
 
 ;==============================
@@ -2906,17 +3246,20 @@ PRINTHEX	ld	c,'0'
 		ld	de,$10
 		jr	DECIM1
 
-;PRINTL	ld	c,'0'
-;		ld	h,0
-;		jr	PRINTL2
+PRINTL2	ld	c,'0'
+		ld	h,0
+		jr	PRINTLX
+PRINTL3	ld	c,'0'
+		ld	h,0
+		jr	PRINTL
 PRINTHL	ld	c,' '
 PRINTHL2	ld	de,10000
 		call	DIGIT
 		ld	de,1000
 		call	DIGIT
-		ld	de,100
+PRINTL	ld	de,100
 		call	DIGIT
-PRINTL2	ld	de,10
+PRINTLX	ld	de,10
 DECIM1	call	DIGIT
 		ld	e,1
 		ld	c,'0'
@@ -2939,14 +3282,17 @@ DIGIT2	ld	c,'0'
 		rst	16
 		ret
 
-;"tiskne" hex cisla do pameti
-STOR16HX	ld	de,$1000
+;"tiskne" hex cisla do pameti na adresu v BC
+;v iyl znak pro nevyznamne 0
+STO16HX	ld	iyl,0
+STO16HX2	ld	de,$1000
 		call	STRDG
-STOR12HX	ld	de,$100
+STO12HX	ld	de,$100
 		call	STRDG
-STOR8HX	ld	de,$10
+STO8HX	ld	de,$10
 STORXX	call	STRDG
 		ld	e,1
+		ld	iyl,'0'
 STRDG	ld	a,'0'-1
 STRDG1	inc	a
 		or	a
@@ -2954,18 +3300,38 @@ STRDG1	inc	a
 		jr	nc,STRDG1
 		add	hl,de
 		cp	'9'+1
-		jr	c,STRDG2
-		add	a,'A'-'9'-1
-STRDG2	ld	(ix+0),a
-		inc	ix
+		jr	nc,STRDG2
+		cp	'0'
+		jr	nz,STRDG3
+		ld	a,iyl
+		or	a
+		ret	z
+		jr	STRDG4
+
+STRDG2	add	a,'A'-'9'-1
+STRDG3	ld	iyl,'0'
+STRDG4	ld	(bc),a
+		inc	bc
 		ret
 
+;"tiskne" dec cisla do pameti ma adresu v BC
+;v iyl znak pro nevyznamne 0
+STOR16DC	ld	iyl,0
+		ld	de,10000
+		call	STRDG
+		ld	de,1000
+		call	STRDG
+STOR8DC	ld	de,100
+		call	STRDG
+STOR6DC	ld	de,10
+		jr	STORXX
 
+
+;"inicializace" obrazu bez loga
+SCRINIT2	call	CLS
+		call	ATRIB
 ;inicializace tiskove rutiny
-PRINTINI
-;vygenerovani tabulky pro
-;vypis znaku
-		xor	a
+PRINTINI	xor	a
 		ld	hl,ADRVRAM
 		ld	(PRINTPOZ),a
 		ld	(PRINTPOZ+1),hl
@@ -3178,17 +3544,6 @@ CTRL_TAB	and	31
 		ld	hl,CTRLSPOL
 		ld	(ACTPRINT+1),hl
 		ret
-	ifdef WITH_WDC
-;"tiskne" dec cisla do pameti
-STOR16DC	ld	de,10000
-		call	STRDG
-		ld	de,1000
-		call	STRDG
-STOR8DC	ld	de,100
-		call	STRDG
-STOR6DC	ld	de,10
-		jp	STORXX
-	endif
 
 
 ;konstanty pro polynom
@@ -3251,38 +3606,45 @@ ISOSIGN	defb	1
 
 ;tabulka pro prekodovani kodu
 ;klaves z KEYSCANu
-KEYSTAB	defb	"BHY65TGV"
-		defb	"NJU74RFC"
-		defb	"MKI83EDX"
-		defb	12
-		defb	"LO92WSZ"
-		defb	' ',13
-		defb	"P01QA"
+KEYSTAB	defb	"bhy65tgv"
+		defb	"nju74rfc"
+		defb	"mki83edx"
+		defb	0,"lo92wsz"
+		defb	' ',13,"p01qa"
+		defb	0
+KEYSSHTAB	defb	"BHY",10,8,"TGV"
+		defb	"NJU",11,5,"RFC"
+		defb	"MKI",9,4,"EDX"
+		defb	0,"LO",14,6,"WSZ"
+		defb	' ',13,'P',12,7,"QA"
 		defb	0
 
+
 ;kody klaves NMI menu spolecne s obsluznymi programy
-NMIPROG	defb	"Q"
+NMIPROG	defb	"q"
 		defw	QUIT
 ;eject removed
-;		defb	"E"
+;		defb	"e"
 ;		defw	EJMED
-		defb	"R"
+		defb	"r"
 		defw	RESET
-		defb	"M"
+		defb	"m"
 		defw	MEDIUM
-		defb	"D"
+		defb	"d"
 		defw	CHDEV
-		defb	"I"
+		defb	"i"
 		defw	DEMINT
-		defb	"F"
+		defb	"f"
 		defw	FINDIMG
-		defb	"S"
+		defb	"s"
 		defw	SECTIMP
-		defb	"V"
+		defb	"v"
 		defw	VRAMSEL
-		defb	"P"
+		defb	"p"
 		defw	DIPAGING
-		defb	13
+		defb	"c"
+		defw	ENTPOKMAN
+		defb	13+32			;delame OR 32 kuli malym pismenum
 		defw	ENTBROWS
 		defb	0
 
@@ -3408,10 +3770,12 @@ RST24ENDR
 		phase 31
 		defb	24			;jr 66 (ROMINTR)
 
-;rst 32 - nastaveni casovace pro screensaver
-		ld	hl,SSAVER
-		ld	a,l
-		ld	(SSTIMER),a
+;rst 32 - volno
+		ld	hl,0			;musi byt kuli predesle adrese
+;screensaver removed
+;		ld	hl,SSAVER
+;		ld	a,l
+;		ld	(SSTIMER),a
 		ret
 RST32ENDR
 
@@ -3453,14 +3817,19 @@ ROMINTR	push	af
 		jr	nz,INT1R
 		inc	hl
 		inc	(hl)
-		inc	hl
-		ld	a,(hl)
-		or	a
-		jr	z,INT1R
-		dec	(hl)
+;screensaver removed
+;		inc	hl
+;		ld	a,(hl)
+;		or	a
+;		jr	z,INT1R
+;		dec	(hl)
 INT1R	pop	hl
 		pop	af
 		ei
+		ret
+
+		org	8192+85
+		phase 85
 ;sem pri NMI pri pristrankovanem DEMFIRu
 ;a pouziva i depak LOGA (detekce adresy)
 		ret				;musi byt na adrese 85!!!
@@ -3583,6 +3952,17 @@ PRINT128R	ld	a,(hl)
 		jr	z,PRINT128R
 		ret
 
+;beep
+BEEPR	push	hl
+		push	af			;potrebujem zachovat flagy kuli snadnemu volani
+		ld	de,256
+		ld	hl,384
+		rst	40
+		defw	BEEPER
+		pop	af
+		pop	hl
+		ret
+
 ;sem to skace po resetu (MAPRAM)
 DORESETR	ld	sp,NMISTACK	;je celkem jedno kde
 		rst	40
@@ -3618,9 +3998,10 @@ DORESETR	ld	sp,NMISTACK	;je celkem jedno kde
 		ld	(GPART2),a
 CRCOKR
 ;init screenseveru
-	ifdef WITH_SS
-		rst	32
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		ld	a,BACKPAGE
 		rst	48
 ;kdyby nekdo nahodou volal TRDOS
@@ -3674,6 +4055,23 @@ AYFILL	ld	a,(hl)
 		inc	d
 		dec	e
 		jr	nz,AYFILL
+		ret
+
+;vrati v HL a IX adresu souboru v bufferu
+;v DE adresu polozky v indexu
+GETFILE	ld	a,(POZICE)
+		add	a,a
+		ld	hl,(VYPIS)
+		ld	c,a
+		ld	b,0
+		add	hl,bc
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		dec	hl
+		ex	de,hl
+		push	hl
+		pop	ix
 		ret
 
 
@@ -3910,8 +4308,8 @@ CARDO1	ld	hl,CACHE
 CDBROWS	rst	40
 		defw	PRINTINI
 AGAIN	ei
-		rst	40
-		defw	NOSIFR
+;		rst	40
+;		defw	NOSIFR
 		di
 		ld	a,(TAPACT)
 		or	a
@@ -3963,6 +4361,10 @@ BROWSTR	ld	(KURCOL),a
 
 NEXTPG	rst	40
 		defw	CLS
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		rst	24				;call PRINTSP
 		defb	22,0,0,16,7+128
 		ld	de,(VYPIS)
@@ -3993,7 +4395,7 @@ TPCTST	ex	de,hl
 		dec	hl
 		jr	nz,TAPLIST
 		rst	24				;call PRINTSP
-		defb	"    .",'.'+128
+		defb	"/.",'.'+128
 		jp	DIRSPOL
 
 TAPLIST	ld	a,c
@@ -4077,50 +4479,58 @@ ISOLIST	push	hl
 		jr	nz,NETECKY
 ;o uroven vyse
 		rst	24				;call PRINTSP
-		defb	'.','.'+128
-		jr	PJM2
+		defb	"/.",'.'+128
+;		jr	PJM2
+		jr	DIRSPOL
 
 NETECKY	dec	hl
 		ld	a,(hl)
-;tiskni max 21 pismen
-		cp	21
+;tiskni max 31 znaku
+		cp	31
 		jr	c,PJMXX
-		ld	a,21
+		ld	a,31
 PJMXX	ld	b,a
+		ld	a,' '
+		bit	1,(ix+25)
+		jr	z,NODIR
+		ld	a,'/'
+NODIR	rst	16
 PJMSM1	inc	hl
 		ld	a,(hl)
 		cp	';'
 ;strednik oddeluje cislo verze
 ;souboru (k nicemu)
-		jr	z,PJM2
+;		jr	z,PJM2
+		jr	z,DIRSPOL
 		rst	16
 		djnz	PJMSM1
-PJM2		ld	a,23
-		rst	16
-		ld	a,23
-		rst	16
-		rst	16
-		bit	1,(ix+25)
-		jr	z,NODIR
-		rst	24				;call PRINTSP
-;misto delky jen text "dir"
-		defb	"<DIR>",' '+128
-		jr	DIRSPOL
 
-NODIR	ld	l,(ix+10)
-		ld	h,(ix+11)
-		ld	e,(ix+12)
-		ld	d,(ix+13)
-		ld	a,' '
-		rst	40
-		defw	PRSIZE
-		ld	a,23
-		rst	16
-		ld	a,31
-		rst	16
-		rst	16
-		ld	a,b
-		rst	16
+;PJM2	ld	a,23
+;		rst	16
+;		ld	a,23
+;		rst	16
+;		rst	16
+;		bit	1,(ix+25)
+;		jr	z,NODIR
+;		rst	24				;call PRINTSP
+;misto delky jen text "dir"
+;		defb	"<DIR>",' '+128
+;		jr	DIRSPOL
+
+;NODIR	ld	l,(ix+10)
+;		ld	h,(ix+11)
+;		ld	e,(ix+12)
+;		ld	d,(ix+13)
+;		ld	a,' '
+;		rst	40
+;		defw	PRSIZE
+;		ld	a,23
+;		rst	16
+;		ld	a,31
+;		rst	16
+;		rst	16
+;		ld	a,b
+;		rst	16
 
 DIRSPOL	ld	a,13
 		rst	16
@@ -4132,50 +4542,57 @@ DIRSPOL	ld	a,13
 ENDTISK	ei
 
 VYBER	call	KURZOR
-VYBERSM
-	ifdef WITH_SS
-		ld	a,(SSTIMER)
+		ld	a,(TAPACT)
 		or	a
-		jr	nz,VYBERSM2
+		jr	nz,VYBERSM
+		call	GETFILE
 		rst	40
-		defw	DEMFSS
-		jp	NEXTPG
-	endif
-
-VYBERSM2	ld	a,239
-		in	a,(254)
-		bit	3,a
+		defw	FILEPARM
+VYBERSM
+;screensaver removed
+;	ifdef WITH_SS
+;		ld	a,(SSTIMER)
+;		or	a
+;		jr	nz,VYBERSM2
+;		rst	40
+;		defw	DEMFSS
+;		jp	NEXTPG
+;	endif
+		rst	40
+		defw	INKEYS
+		cp	'7'
 		jr	z,UP
-		bit	4,a
+		cp	11
+		jr	z,UP
+		cp	'6'
 		jr	z,DOWN
-		bit	2,a
-		jp	z,PGDW
-		ld	a,247
-		in	a,(254)
-		bit	4,a
+		cp	10
+		jr	z,DOWN
+		cp	'5'
 		jr	z,PGUP
-		ld	a,191
-		in	a,(254)
-		rra
-		jp	nc,ENTER
-
-		ld	a,127
-		in	a,(254)
-		rra
-		jr	c,VYBERSM
+		cp	8
+		jr	z,PGUP
+		cp	'8'
+		jr	z,PGDW
+		cp	9
+		jr	z,PGDW
+		cp	13
+		jp	z,ENTER
+		cp	' '
+		jr	nz,VYBERSM
 		ret
 
-
 UP
-	ifdef WITH_SS
-		rst	32
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		ld	a,(POZICE)
 ;test zac. stranky
 		or	a
 		jr	nz,UP2
 		call	DOPGUP
-		jp	c,VYBERSM
+		jr	c,VYBERSM
 		ld	a,21
 		ld	(POZICE),a
 		jp	NEXTPG
@@ -4194,17 +4611,17 @@ UP2
 		or	(hl)
 		jr	z,VYBERSM
 		dec	b
-UDSPOL
-		ld	a,b
+UDSPOL	ld	a,b
 		ld	(POZICE),a
-		rst	40
-		defw	NOSIFR
-		jr	VYBER
+;		rst	40
+;		defw	NOSIFR2
+		jp	VYBER
 
 DOWN
-	ifdef WITH_SS
-		rst	32
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		ld	a,(POZICE)
 ;test na max. radku
 		cp	21
@@ -4231,9 +4648,10 @@ DOWN2
 		jr	UDSPOL
 
 PGUP
-	ifdef WITH_SS
-		rst	32
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		ld	b,0
 		ld	a,(POZICE)
 		or	a
@@ -4243,9 +4661,10 @@ PGUP
 		jp	NEXTPG
 
 PGDW
-	ifdef WITH_SS
-		rst	32
-	endif
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		ld	a,(POZICE)
 		cp	21
 		jr	nz,PGDW2
@@ -4253,10 +4672,8 @@ PGDW
 		jp	c,VYBERSM
 		jp	NEXTPG
 
-PGDW2
-		ld	hl,(VYPIS)
-;2*(21+1)
-		ld	de,44
+PGDW2	ld	hl,(VYPIS)
+		ld	de,44			;2*(21+1)
 		add	hl,de
 		ld	b,22
 PGDW3	dec	b
@@ -4275,7 +4692,7 @@ DOPGUP	ld	hl,(VYPIS)
 		ld	de,22*2
 		or	a
 		sbc	hl,de
-		ld	de,INDEX
+		ld	de,INDEX+1		;musi platit c i pro z
 ;vzdy NC
 		sbc	hl,de
 		add	hl,de
@@ -4364,15 +4781,16 @@ DOPGDW
 		inc	hl
 		or	(hl)
 		jr	nz,DOPGSPL2
-DOPGDWX
-		call	DOPGDW2
+DOPGDWX	call	DOPGDW2
 		pop	hl
 ;kdyz nc, uz je vse udelano
 		ret	nc
 		ld	(VYPIS),hl
-		call	FINDEND
-		or	a
-		ret
+		jp	FINDEND
+;FINDEND dela or a
+;		call	FINDEND
+;		or	a
+;		ret
 
 DOPGSPL2	pop	hl
 DOPGSPL	ld	(VYPIS),hl
@@ -4436,10 +4854,8 @@ DOPGDW2
 		rst	40
 		defw	GETISO2
 		pop	hl
-FINDEND
 ;najdi konec zaznamu
-;2*(21+1)
-		ld	de,44
+FINDEND	ld	de,44			;2*(21+1)
 		add	hl,de
 		ld	b,22
 DOPGDWY	dec	b
@@ -4455,11 +4871,11 @@ DOPGDWY	dec	b
 
 ;vybran nejaky soubor
 ENTER
-	ifdef WITH_SS
-		rst	32
-	endif
-		rst	40
-		defw	GETFILE
+;screensaver removed
+;	ifdef WITH_SS
+;		rst	32
+;	endif
+		call	GETFILE
 		ld	a,(TAPACT)
 		or	a
 		jr	z,ENTER2
@@ -4468,8 +4884,8 @@ ENTER
 		or	h
 		jr	z,LEAVETAP
 		ld	(TAPCURS),de
-		rst	40
-		defw	NOSIFR
+;		rst	40
+;		defw	NOSIFR
 ;navrat do NMI menu
 		ret
 
@@ -4548,17 +4964,12 @@ SCRSPOL
 ;osetreni chyby pri cteni?
 		rst	40
 		defw	GUESBORD
-		rst	40
-		defw	NOSIFR
+SCRWTK
+;		rst	40
+;		defw	NOSIFR
 ;pockej na stisk libovol. klav.
-		di
-SCRWTK	xor	a
-		in	a,(254)
-		cpl
-		and	31
-		jr	z,SCRWTK
-		xor	a
-		out	(254),a
+		rst	40
+		defw	INKEYS		;cekme na klavesu
 		jp	NEXTPG
 
 NOTMSCR	ld	b,6912/256
@@ -4845,35 +5256,25 @@ NENITAP
 		ld	de,EXTPOK
 		call	TESTPRIP
 		jp	nz,NENIPOK
-;black screen aby nebylo videt co s nim provadime...
-		xor	a
-;		rst	40
-;		defw	ATRIB
 		push	ix
 		pop	hl
 ;v hl adresa polozky
 		ld	de,7
 		add	hl,de
-		rst	40
-		defw	CAINIT
-;jeden 2048B sektor do VRAM
-;		ld	hl,16384
-		ld	hl,65536-2048
-		ld	de,CACHELBA
+		ex	de,hl			;lba souboru do de
+;jeden 2048B sektor do CACHE
+		ld	hl,CACHE
+;		ld	hl,65536-2048
+		push	hl
 		rst	40
 		defw	READ1SEC
-		ld	a,BACKPAGE
-		rst	48
-;		ld	(PGSTACK),sp
-;		ld	sp,PGSTACK
 ;bylo by dobre zneplatnit data o poke?
 ;rozebrani .pok souboru
-;FIXME - test na volne misto v seznamu
-;		ld	hl,16384			;nejde pres push
-xxx
-		ld	hl,65536-2048
+		pop	hl
 		ld	ix,POKTAB
 		ld	de,POKDATA
+		ld	a,25				;max pocet "traineru" + 1
+		ex	af,af'
 PKSM1	ld	a,(hl)			;prvni znak na radce urcuje obsah
 		inc	hl
 		cp	'M'
@@ -4882,11 +5283,23 @@ PKSM1	ld	a,(hl)			;prvni znak na radce urcuje obsah
 		jr	z,PKLNDTA			;'M' a 'Z' je mi jedno
 		cp	'N'
 		jr	nz,PKEOF			;'Y' nebo cokoliv jineho->konec
-;jmeno pro "trainer"
+;vlezem se jeste do vyhrazene pameti?
+		ex	af,af'
+		dec	a
+		jr	z,PKEOF			;moc traineru
+		ex	af,af'
+		ex	de,hl
+		ld	bc,POKEND-35+1		;35=28+1+5+1, +1 kuli nc
+		or	a
+		sbc	hl,bc
+		jr	nc,PKEOF			;nevejdem
+		add	hl,bc
+		ex	de,hl
 		ld	(ix+0),e
 		ld	(ix+1),d
 		inc	ix
 		inc	ix
+;jmeno pro "trainer"
 		ld	b,28
 PKNME1	ld	a,(hl)
 		cp	' '
@@ -4897,8 +5310,11 @@ PKNME2	ld	(de),a
 		inc	hl
 		inc	de
 		djnz	PKNME1
-PKSM2	xor	a				;konec seznamu
-		ld	(de),a
+		push	de
+		pop	iy				;adresa statusu
+		inc	de
+PKSM2	xor	a
+		ld	(de),a			;konec seznamu hodnot
 		inc	de
 PKFNDLN	ld	a,(hl)			;najdi novy radek
 		inc	hl
@@ -4908,28 +5324,45 @@ PKFNDLN	ld	a,(hl)			;najdi novy radek
 
 ;data pro "trainer"
 PKLNDTA	dec	de
+;vlezem se jeste do vyhrazene pameti?
+		ex	de,hl
+		ld	bc,POKEND-6+1		;6=5+1, +1 kuli nc
+		or	a
+		sbc	hl,bc
+		jr	nc,PKEOF			;nevejdem
+		add	hl,bc
+		ex	de,hl
 		call	ATOI				;page
 		ld	a,c
+		or	64+16
 		ld	(de),a
-		inc	de
+;		bit	3,a
+;		jr	nz,PKLNDTA2
+;		out	(253),a			;128k page
+PKLNDTA2	inc	de
 		call	ATOI				;address
 		ex	de,hl
 		ld	(hl),c
 		inc	hl
 		ld	(hl),b
 		inc	hl
+;		ld	a,(bc)			;zjisti puvodni data v pameti
+;		push	af
 		ex	de,hl
 		call	ATOI				;value + ask
+		ld	(iy+0),b			;bud 0 nebo 1 (ask)
 		ex	de,hl
+;		pop	af
+;		bit	0,b
+;		jr	nz,PKLNDTA3
+;		ld	a,c
+;PKLNDTA3	ld	(hl),a
 		ld	(hl),c
-		inc	hl
-		ld	(hl),b
 		inc	hl
 		ex	de,hl
 		call	ATOI				;original value
 		ld	a,c
 		ld	(de),a
-		inc	de
 		inc	de
 		jr	PKSM2
 
@@ -4937,39 +5370,526 @@ PKLNDTA	dec	de
 PKEOF	xor	a
 		ld	(ix+0),a
 		ld	(ix+1),a
-;musi ze znova inicializovat tisk (mame jinou RAM)???
-;		call	PRINTINI
-		rst	40
-		defw	CLS
-		rst	40
-		defw	ATRIB			;v A zustala 0
-;vypisem co mame
+		ld	(POKCUR),a
+		call	POKEMAN			;muzem volat i z nmi menu
+		jp	NEXTPG
+
+;zjisteni aktualniho stavu
+POKEMAN	rst	40
+		defw	SCRINIT2
 		ld	hl,POKTAB
-PKLST1	ld	e,(hl)
+		ld	a,(hl)
+		inc	hl
+		cp	(hl)
+		dec	hl
+		jp	z,POKADD			;tabulka prazdna, rucni vstup
+POKEMSM	ld	e,(hl)
 		inc	hl
 		ld	d,(hl)
 		inc	hl
-		ld	a,d
-		or	e
+		ld	a,e
+		or	d
+		jr	z,PKSHOW
+		ex	de,hl
+		ld	bc,28
+		add	hl,bc
+		ld	a,(hl)
+		and	1
+		or	4*8+2			;init stavu (green + active)
+		ld	(hl),a
+		push	hl
+		pop	ix
+POKEMAN3	inc	hl
+		ld	a,(hl)
+		or	a
+		ex	hl,de
+		jr	z,POKEMSM
+		ex	de,hl
+		bit	3,a
+		jr	nz,POKEMAN2
+		out	(253),a			;128k page
+POKEMAN2	inc	hl
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		ld	a,(bc)
+		inc	hl
+		bit	0,(ix+0)
+		jr	z,POKEMAN6
+;vyptavaci hodnota, pouzij aktualni stav pameti
+;dalsi testy pak dopadaji porad stejne, ale bylo by slozitejsi je preskakovat
+		ld	(hl),a
+POKEMAN6	ld	b,(hl)			;poke
+		inc	hl
+		ld	c,(hl)			;original
+		ex	af,af'
+;zjisteni barvy kurzoru
+;green - urcite ok (orig. hodnota znama a v pameti je poke nebo orig. hodnota)
+;yellow - mozna ok (orig hodnota neni znama)
+;red - urcite spatne (orig. hodnota znama a v pameti neni ani poke ani orig. hodnota)
+		ld	a,c
+		or	a
+		jr	nz,POKEMAN5
+		set	4,(ix+0)			;yellow (neznamo)
+POKEMAN5	ex	af,af'
+		cp	b
+		jr	z,POKEMAN3		;aktivni, tj. nemuze byt red
+		res	1,(ix+0)			;not active
+POKEMAN4	cp	c
+		jr	z,POKEMAN3		;v pameti orginal
+		ld	a,c
+		or	a
+		jr	z,POKEMAN3		;nevime, mozna dobre
+;nerovna se ani znamemu originalu, ani poke, spatne -> konec
+;nech pouze "ask" bit
+		ld	a,(ix+0)
+		and	1
+		or	2*8				;red
+		ld	(ix+0),a
+		ex	de,hl
+		jr	POKEMSM
+
+;zobrazeni aktualnich traineru
+PKSHOW	rst	40
+		defw	SCRINIT2
+		ld	hl,POKTAB
+PKLST1	ld	e,(hl)
+		inc	hl	
+		ld	d,(hl)
+		inc	hl
+		ld	a,e
+		or	d
 		jr	z,PKENDLST
 		ex	de,hl
 		ld	b,28
 		rst	40
 		defw	PRINTB
+		ld	a,32
+		rst	16
+		ld	a,(hl)
+		bit	0,a
+		jr	z,PKLST2
+		inc	hl
+		inc	hl
+		inc	hl
+		inc	hl
+		ld	l,(hl)
+		push	de
+		rst	40
+		defw	PRINTL3
+		pop	hl
+		jr	PKLST4
+
+PKLST2	ld	hl,TXTNO
+		bit	1,a
+		jr	z,PKLST3
+		inc	hl
+		inc	hl
+PKLST3	call	PRINT128R
 		ex	de,hl
+PKLST4	ld	a,13
+		rst	16
 		jr	PKLST1
 
-PKENDLST
+;interakce s uzivatelem
+PKENDLST	ld	hl,POKCUR
+PKENDLST2	ld	a,(hl)
+		add	a,a
+		ld	c,a
+		ld	b,0
+		ex	de,hl
+		ld	hl,POKTAB
+		add	hl,bc
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		ld	c,28				;b=0
+		add	hl,bc
+		ld	a,(hl)			;stav
+		and	%00111000			;ponech pouze barvu
+		ex	af,af'
+		ex	de,hl
+		ld	a,(hl)
+		call	KURZORA
+POKESM	push	hl
+		rst	40
+		defw	INKEYS
+		pop	hl
+		cp	'7'
+		jr	z,POKEUP
+		cp	11
+		jr	z,POKEUP
+		cp	'6'
+		jr	z,POKEDOWN
+		cp	10
+		jr	z,POKEDOWN
+		cp	'5'
+		jr	z,POKEPGUP
+		cp	8
+		jr	z,POKEPGUP
+		cp	'8'
+		jr	z,POKEPGDW
+		cp	9
+		jr	z,POKEPGDW
+		cp	13
+		jr	z,POKEENT
+		or	32				;mala pismena
+		cp	'a'
+		jp	z,POKADD
+		cp	'd'
+		jp	z,POKDEL
+		cp	'c'
+		jp	z,POKCLEAR
+		cp	' '
+		jr	nz,POKESM
+		ret
 
+POKEUP	ld	a,(hl)
+		or	a
+		jr	z,POKESM
+		dec	(hl)
+;		rst	40
+;		defw	NOSIFR
+		jr	PKENDLST2
 
-	
-;		ld	sp,(PGSTACK)
+POKEDOWN	call	FINDPEND
+		jr	z,POKESM
+		inc	(hl)
+;		rst	40
+;		defw	NOSIFR
+		jr	PKENDLST2
+
+POKEPGUP	ld	(hl),0
+		jr	PKENDLST2
+
+POKEPGDW	call	FINDPEND
+		jr	z,PKENDLST2
+		inc	(hl)
+		jr	POKEPGDW
+
+POKEENT	call	FINDPEND
+		ld	a,(hl)
+		ld	iyu,a			;pozice inputu
+		ld	h,(ix-1)
+		ld	l,(ix-2)
+		ld	c,28				;b=0
+		add	hl,bc
+		ld	a,(hl)
+		bit	0,a
+		jr	z,POKEENT2
+		push	hl
+		pop	ix
+;je treba nastavit barvy pro tisk
+		ld	a,16
+		rst	16
 		xor	a
-		rst	48
+		rst	16
+		ld	a,17
+		rst	16
+		ld	a,(hl)
+		rra
+		rra
+		rra
+		and	7
+		rst	16
+		ld	hl,INPBUFF
+		ld	(hl),' '+128
+		inc	hl
+		push	hl
+		ld	b,3
+		ld	a,32
+POKEENT4	ld	(hl),a
+		inc	hl
+		djnz	POKEENT4
+		ld	(hl),' '+128		;znacka konce
+		pop	bc
+		ld	iyl,0			;nepis nevyzname nuly
+		ld	l,(ix+5)			;nabizime original value
+		ld	h,0
+		rst	40
+		defw	STOR8DC
+;		ld	a,(POKCUR)
+;		ld	iyu,a
+		ld	iyl,28
+POKEENT7	ld	hl,0
+POKEENT5	rst	40
+		defw	INPUT
+		ld	hl,0				;zruseni blikani kurzoru
+		ld	(IKURPOS),hl
+		jp	c,PKSHOW			;stisteno 'edit'
+		inc	de
+		ex	de,hl
+		call	ATOI
+		ld	a,(hl)
+		cp	' '
+		jr	z,POKEENT3
+		bit	7,a
+		call	z,BEEPR
+		jr	z,POKEENT5
+POKEENT3	ld	a,b
+		or	a
+		call	nz,BEEPR
+		jr	nz,POKEENT7
+;v C je hodnota
+		ld	(ix+4),c
+		ld	a,(ix+1)
+		bit	3,a
+		jr	nz,POKEENT6
+		out	(253),a
+POKEENT6	ld	l,(ix+2)
+		ld	h,(ix+3)
+		ld	(hl),c
+		jp	PKSHOW
 
-;DOCASNE!!!
-		jp	SCRWTK
+;on/of
+POKEENT2	xor	2				;prohozeni on/off
+		ld	c,a				;zapamatujem
+		ld	(hl),a
+;nastaveni hodnot do pameti
+SETPK1	inc	hl
+		ld	a,(hl)
+		or	a
+		jp	z,PKSHOW
+		bit	3,a
+		jr	nz,SETPK2
+		out	(253),a			;128k page
+SETPK2	inc	hl
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	b,(hl)			;poke
+		inc	hl
+		ld	a,(hl)			;orig
+		bit	1,c
+		jr	z,SETPK3
+		ld	a,b
+SETPK3	ld	(de),a
+		jr	SETPK1
 
+;kompletni smazani vsech cheatu v pameti
+POKCLEAR	ld	hl,0
+		ld	(POKTAB),hl
+		rst	40
+		defw	SCRINIT2
+		jr	POKADD
+
+;zruseni posledniho cheatu
+POKDEL	ld	hl,POKTAB
+		ld	b,h
+		ld	c,l
+POKDEL2	ld	a,(hl)
+		inc	hl
+		or	(hl)
+		inc	hl
+		jr	nz,POKDEL2
+		dec	hl
+		dec	hl
+		xor	a				;0+nc
+		dec	hl
+		ld	(hl),a
+		dec	hl
+		ld	(hl),a
+		ld	(POKCUR),a		;kurzor na zacatek at s nim neni problem
+;jsme uplne na zacatku?
+		sbc	hl,bc
+		jp	nz,PKSHOW			;ne
+;ano, musime neco pridat, pokracujem v POKADD
+		rst	40
+		defw	SCRINIT2
+;sem nic nepridavat!!!
+
+;rucni pridani cheatu
+POKADD	ld	hl,POKTAB-1
+		ld	bc,POKDATA
+POKADD2	ld	d,b				;potrebujem minulou hodnotu
+		ld	e,c
+		inc	hl
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		ld	a,b
+		or	c
+		jr	nz,POKADD2
+		dec	hl
+;je jeste misto?
+;(staci na pocet, data by se mela vejit vzdy)
+		ld	bc,POKTAB+48		;2*24
+		sbc	hl,bc			;nc je od or c
+		add	hl,bc
+		call	z,BEEPR
+		jp	z,PKENDLST		;nemuze se stat kdyz je prazdno
+;v de adresa poslednich dat, musime najit konec
+;ale jen pripade, ze to neni uplny zacatek
+		ld	bc,POKTAB
+		push	bc
+		or	a
+		sbc	hl,bc
+		add	hl,bc
+		jr	z,POKADD7
+		ex	de,hl
+		ld	bc,30			;posun na page
+		add	hl,bc
+		ld	c,5				;b=0
+POKADD3	ld	a,(hl)
+		add	hl,bc
+		or	a
+		jr	nz,POKADD3
+		sbc	hl,bc			;nc od or a
+		ex	de,hl
+;mame adresu kam davat data
+POKADD7	pop	bc
+		push	hl				;pozice v POKTAB
+		push	de				;adr. dat
+		pop	ix
+;vstup od uzivatele
+		sbc	hl,bc			;nc odminula
+		ld	a,l				;nebude vic jak 50
+		srl	a				;deleni dvema
+		ld	iyu,a
+		ld	iyl,0
+		ld	hl,MANTEMP
+		ld	de,INPBUFF
+		push	de
+		ld	bc,MTEND-MANTEMP
+		ldir
+		pop	hl
+POKADD4	rst	40
+		defw	INPUT
+		ld	hl,0				;zruseni blikani kurzoru
+		ld	(IKURPOS),hl
+		jp	c,POKADDEND		;stisteno 'edit'
+		inc	de
+		ex	de,hl
+		call	ATOI
+		ld	a,(hl)
+		cp	' '
+		dec	hl				;korekce input kurzoru
+		call	nz,BEEPR
+		jr	nz,POKADD4
+		ld	a,b
+		or	a
+		call	nz,BEEPR
+		jr	nz,POKADD4
+		ld	a,c
+		cp	9				;max 8
+		call	nc,BEEPR
+		jr	nc,POKADD4
+		or	64+16
+		ld	(ix+29),a
+		inc	hl				;korekce input kurzoru
+		call	ATOI
+		ld	a,(hl)
+		cp	' '
+		dec	hl				;korekce input kurzoru
+		call	nz,BEEPR
+		jr	nz,POKADD4
+		ex	de,hl
+		ld	l,c
+		ld	h,b
+		ld	bc,NMISTACK		;chranime nasi RAM i stack
+		or	a
+		sbc	hl,bc
+		add	hl,bc
+		ex	de,hl
+		call	c,BEEPR
+		jr	c,POKADD4
+		ld	(ix+30),e
+		ld	(ix+31),d
+		inc	hl				;korekce input kurzoru
+		call	ATOI
+		ld	a,(hl)
+		cp	' '
+		jr	z,POKADD5
+		dec	hl				;korekce input kurzoru
+		bit	7,a
+		call	z,BEEPR
+		jr	z,POKADD4
+POKADD5	ld	a,b
+		or	a
+		call	nz,BEEPR
+		jr	nz,POKADD4
+		ld	(ix+32),c
+		ex	de,hl			;poke adresa
+		ld	a,(ix+29)
+		bit	3,a
+		jr	nz,POKADD6
+		out	(253),a
+POKADD6	ld	a,(hl)
+		ld	(ix+33),a
+		ld	(ix+34),0			;koncova znacka
+		ld	(ix+28),4*8		;no ask, no active, green
+;slozime "jmeno"
+		push	ix
+		pop	hl
+		push	hl
+		push	hl
+		ld	c,27				;v b je 0
+		ld	a,' '
+		rst	40
+		defw	FILLBYTE
+		pop	bc
+		inc	bc
+		ld	a,(ix+29)
+		and	15
+		ld	l,a
+		ld	h,0
+		ld	iyl,0
+		rst	40
+		defw	STOR6DC
+		ld	a,':'
+		ld	(bc),a
+		inc	bc
+		ld	l,(ix+30)
+		ld	h,(ix+31)
+		rst	40
+		defw	STOR16DC
+		ld	a,','
+		ld	(bc),a
+		inc	bc
+		ld	l,(ix+32)			;v h by mela byt 0
+		rst	40
+		defw	STOR8DC
+		inc	bc				;mezera
+		ld	a,'('
+		ld	(bc),a
+		inc	bc
+		ld	l,(ix+33)			;v h by mela byt 0
+		rst	40
+		defw	STOR8DC
+		ld	a,')'
+		ld	(bc),a
+		pop	bc
+		pop	hl
+		ld	(hl),c
+		inc	hl
+		ld	(hl),b
+		inc	hl
+		xor	a
+		ld	(hl),a			;koncova znacka
+		inc	hl
+		ld	(hl),a
+		jp	PKSHOW			;finito
+
+POKADDEND	pop	hl
+		ld	bc,POKTAB
+		or	a
+		sbc	hl,bc
+		ret	z				;jsme na zacatku, navrat odkud volano
+		jp	PKSHOW			;jinak smyckujem
+
+;test jestli je dalsi pokpolozka platna
+;nz=platna
+FINDPEND	ld	a,(hl)
+		add	a,a
+		ld	c,a
+		ld	b,0
+		ld	ix,POKTAB+2		;next item
+		add	ix,bc
+		ld	a,(ix+0)
+		or	(ix+1)
+		ret
 
 ;precte cislo v textove podobe z adresy HL
 ;vysledek v BC, na (HL) prvni neplatny znak
@@ -5002,6 +5922,14 @@ ATOI2	ld	a,(hl)
 		ld	c,l
 		pop	hl
 		jr	ATOI2
+
+;musi byt takhle zasebou a TXTNO jen 2 byte
+TXTNO	defb	'N', 'O'+128
+TXTYES	defb	"YE", 'S'+128
+
+;predloha pro rucne zadany poke
+MANTEMP	defb	' '+128,"P ADDRS VAL",' '+128
+MTEND
 
 	endif ;WITH_POK
 
@@ -5073,7 +6001,7 @@ SNA128_3	inc	b
 		jr	z,SNA128_2
 ;mame 128K stranky, zbytek nasosnem jako 48K verzi
 		ld	a,(SNAPAGE)
-		or	64
+		or	64				;fixme - vynucovat BASIC ROM (or 16)?
 		out	(253),a
 		call	SNAPINIT2
 		call	SNAALL
@@ -5379,8 +6307,7 @@ SNAERR3	jr	SNAERR3		;konecna
 	endif
 
 	ifdef WITH_Z80
-;precte jednu stranku s pripad-
-;nym vynechanim nechtenych str.
+;precte jednu stranku s pripadnym vynechanim nechtenych str.
 ONEPAGE	call	RDPG
 		ret	c
 ;odecti posun 128 stranek
@@ -5416,7 +6343,7 @@ ONEPAGE1	call	ONEPAGE
 ;vyuzij zrcadleni stranek
 		ld	hl,49152
 ;aby fungoval out na 253 (+2A)
-		or	64
+		or	64+16
 		out	(253),a
 		jr	Z80RDBK
 
@@ -5571,7 +6498,7 @@ RUNZ80	call	INTSYNC
 ;nastaveni aktualni 128 stranky
 		ld	a,(Z80START+35)
 ;aby fungoval out na 253 (+2A)
-		or	64
+		or	64				;fixme - vynucovat BASIC ROM (or 16)?
 		out	(253),a
 JENV1	call	INTSYNC			;pro 128k podruhe, ale to neva
 		ld	a,(Z80START+27)
@@ -5648,11 +6575,9 @@ PC_V1	ex	hl,de			;s HL je to o byte kratsi
 ;vsechny obsluhy snapu zacinaji stejne
 SNAPINIT	di
 		rst	40
-		defw	CLS
-		rst	40
-		defw	ATRIB			;v A zustala 0
+		defw	SCRINIT2
 		rst	24				;call PRINTSP
-		defb	22,12,4,17,0,16,6,19,1
+		defb	22,12,4,16,6,19,1
 		defb	" Loading... Please wait "
 		defb	19,128
 ;konfig 128 na 48 (reset stav)
@@ -5725,8 +6650,8 @@ IS48KMODE	ld	a,(ACTPAGE)
 		defb	"Can't load 128K snap in 48K mode"
 		defb	19,0,18,128
 		ei
-		rst	40
-		defw	NOSIFR
+;		rst	40
+;		defw	NOSIFR
 		rst	40
 		defw	INKEYS		;cekme na klavesu
 		jp	NEXTPG
@@ -5735,9 +6660,11 @@ IS48KMODE	ld	a,(ACTPAGE)
 
 
 ;nakresli kurzor (browser)
-KURZOR	push	hl
+KURZOR	ld	a,(KURCOL)
+		ex	af,af'
+		ld	a,(POZICE)
+KURZORA	push	hl
 		push	de
-;		ld	a,7
 ;atrib kopie
 		ld	hl,22528
 		ld	de,22529		;rychlejsi
@@ -5745,7 +6672,6 @@ KURZOR	push	hl
 		ld	(hl),7
 		ldir
 ;az sem
-		ld	a,(POZICE)
 		add	a,a
 		add	a,a
 		add	a,a
@@ -5755,7 +6681,7 @@ KURZOR	push	hl
 		add	hl,hl
 		ld	bc,22528
 		add	hl,bc
-		ld	a,(KURCOL)
+		ex	af,af'
 		ld	b,32
 KURZOR2	ld	(hl),a
 		inc	l			;v jednom radku

@@ -6,3 +6,5 @@
 - Running of .MFC snapshots is not OK, some problems with 2nd VRAM (fixed ???)
 - When pressed NMI without RESET after DEMFIR upgrade required initialization
   is not performed (fixed ???)
+- "AY active" flag is ignored in 48K .z80 snaps and AY registers are not filled
+- PokeManager can't write below address 23552 (printbuffer)

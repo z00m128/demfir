@@ -7,3 +7,5 @@
 - Spou¹tìní .MFC není je¹tì úplnì dokonalé, obèas problémy s 2. VRAM (opraveno ???)
 - Pokud se po upgrade DEMFIRu stiskne NMI døíve ne¾ RESET, nenastane nová
   inicializace dat (opraveno ???)
+- pøíznak "AY aktivní" je ignorován pro 48K .Z80 a registry AY nejsou naplnìny
+- PokeManager neumi zapisovat na adresy pod 23552 (printbuffer)

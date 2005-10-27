@@ -27,7 +27,7 @@ WITH_SCR
 
 ; build with poke manager
 ; prelozit se "spravcem pouku"
-;WITH_POK			; not working / nefunguje
+WITH_POK
 
 ; build with support for old hdd without LBA
 ; prelozit s podporou starych disku bez LBA
@@ -39,7 +39,7 @@ WITH_WDC
 
 ; build with screen saver
 ; prelozit se sporicem obrazovky
-WITH_SS
+;WITH_SS	(removed)
 
 ; build with screen capture
 ; prelozit s "tipacem obrazovek"

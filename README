@@ -28,6 +28,8 @@ Features:
   there is some active TAP file in DEMFIR (selected) all data is readed from
   IDE device. If TAP file is not active, data is readed from standard tape
   input (with default ROM routines).
+- POK file read and easy way to turn on and off any cheat (cheat is group of
+  POKEs applied together).
 - Modular architecture - some parts can be turned off at compile time and there
   will be space for some other modules.
 
@@ -36,7 +38,7 @@ D = device  - device change (master/slave)
 M = medium  - reread of medium and image detection
 R = reset   - software reset (JP 0), with 'SYMBOL SHIFT' clears DEMFIR's RAM too
 I = init    - new devices detection, with 'SYMBOL SHIFT' bypasses detected
-              device size and set maximum size (128 GB for LBA a c. 8 GB for
+              device size and set maximum size (128 GB for LBA and c. 8 GB for
               CHS). For CHS in addition get default geometry instead of actual
               (may help with old or nonstandard hdds).
               If build with WITH_WDC and hdd tells invalid actual geometry
@@ -55,20 +57,20 @@ F = find    - finds ISO image on any place on medium (can't be performed on real
               from actual position press key 'F' together with 'SYMBOL SHIFT'.
               Searching can be interrupted by key 'SPACE'.
 S = sector  - with this function you can specify sector where ISO image is
-              expected or where you want to start searching. Use keys 0-9 and
-              A-F for hexadecimal number, 'SPACE' for move to next position,
-              'SYMBOL SHIFT' for move to previous position. Input goes from
-              right to left and digit position is significant. After 7th digit
-              cursor goes to start (1st digit) - can't go back (with 'SYMBOL
-              SHIFT'). 'ENTER' quits input mode and new sector number is used to
-              read new ISO image (when you get 'No ISO image found' message, try
-              searching).
+              expected or where you want to start searching. For input controls
+              see "Input controls" :). Number is in hexa, accepts characters
+              0-9 and A-F (case insensitive). At input end new sector number is
+              used to read new ISO image (when you get 'No ISO image found'
+              message, try searching).
 V = VRAM    - shows actual Video RAM (always 1st after NMI), next press of 'V'
               key swaps 1st and 2nd VRAM. If there is no keypress within two
               seconds after last keypress, displayed VRAM is set for Quit and
               DEMFIR returns to NMI menu. In 48K mode only shows 1st VRAM,
               switching doesn't work.
 P = paging  - disable 128K paging (out 32765,48), only hardware reset enable it.
+C = cheat   - (only if builded with PokeManager) shows list and state of actual
+              cheats (readed from .POK file), if there is no actual cheat it
+              starts manual POKE entry (can be escaped with CS+1).
 Enter       - starts file browser
 
 File browser controls:
@@ -83,6 +85,21 @@ Enter       - action = view of the picture (waits for any key), snapshot run,
               on circumstances)
 Space       - exits file browser
 
+Input controls:
+CS+1 (EDIT)  - exit without value store
+CS+2 (CAPSL) - whole input clear
+CS+4 (INV.V) - insert space behalf cursor
+CS+5 ( <- )  - cursor left
+CS+6 ( ^ )   - cursor to begin of line
+CS+7 ( v )   - cursor to end of line
+CS+8 ( -> )  - cursor right
+CS+9 (GRAPH) - delete char on the right of cursor (delete)
+CS+0 (DEL)   - delete char on the left of cursor (backspace)
+Enter        - exit with value store
+Input is in overwrite mode (old char is replaced with new one), for insertion
+of chars before existing string use CS+4. If there is an illegal character,
+after exit cursor will be placed AFTER it. If there is number out of range,
+cursor will be placed after whole number.
 
 When you working with TAP files, cursor goes green (everything is ok), red
 (broken TAP file) or yellow (TAP file is ok, but contains too many files and
@@ -103,19 +120,63 @@ Second line shows list of supported formats
 - SNA = SNA snaps, enabled by WITH_SNA in config.a80
 - MFC = MFC snaps, enabled by WITH_MFC in config.a80
 - SCR = picture viewer, enabled by WITH_SCR in config.a80
+- POK = PokeManager, enabled by WITH_POK in config.a80
 
 Third line shows other modules and settings
 - CHS = support for HDD without LBA, enabled by WITH_CHS in config.a80
 - WDC = automatic geometry pre-set during device detection, required for some
         Western Caviar disks, enabled by WITH_WDC in config.a80
 - +3R = changes ROM of +2A/+3 via port 8189, enabled by ROM_2A_3 in config.a80
-- SSv = screen saver (blank screen after two minutes), enabled by WITH_SS in
-        config.a80
 
 Logo can be selected by LOGO_TNT (older) or LOGO_F6 (new and much better), if
 no one is selected simple text line is used.
 If you don't like standard zx font, enable BOLD_FONT in config.a80 and you will
 get bold font from Didaktik M (czech speccy clone).
+
+PokeManager
+- Controls are the same as in browser, in addition there are this keys:
+  A = Add    - adds POKE (manual entry).
+  D = Delete - deletes POKE or cheat which is LAST in the list.
+  C = Clear  - deletes all cheats and starts manual entry of POKE.
+- For all cheat shows name and YES (active) or NO (inactive) for state cheats
+  or actual memory value for value required cheats.
+- Colour of cursor have this meaning:
+  Green   - original value is known and it or cheat value is in the memory.
+            It's safe to turn this cheat on and off.
+  Yellow  - original value is unknown and check can't be perfomed. If you're
+            sure you have right POK file should be safe to turn cheat on but
+            turn off can be dangerous.
+  Red     - original value is known and it nor cheat value is not in the
+            memory. It's VERY DANGEROUS turn this cheat on or off and this will
+            probably cause crash of game or application.
+- When setting value for value requred cheats works standard input keys (see
+  Input controls). ORIGINAL value is offered (not actual and displayed memory
+  value). Is possible to turn off cheat with simple Enter.
+- Recommended use of PokeManager: load game or application (snap or with tape
+  emulator). Enter DEMFIR's NMI menu and select relevant POK file in browser.
+  Set required cheats and quit to interrupted program. PokeManager can be used
+  to change state of the cheats anytime from NMI menu via key 'C'.
+- Manual entry allows enter any POKE you want. This mode is entered when there
+  is no cheats or via key 'A' in PokeManager. Input buffer is filled with
+  string which should help with entering (use overwrite mode of input). POKE
+  entry is three numbers divided by space. First number is 128K RAM page number
+  (0-7 or 8 for ignore paging). Second number is memory address (23552-65535)
+  and third is value to store to address (0-255). There is string instead name
+  after successful entry. It's format:
+  "page:address,value (original RAM value)".
+  It confirms that all values was interpreted right. Now this POKE can be used
+  as any other cheat.
+- PokeManager limitations:
+  - Max POK file size: 2048 bytes
+  - Max number of cheats or manual entered POKEs: 24 (one screen)
+    Due POK file characteristics can be this number lower - some cheats use
+    more values to change.
+  - Only first value of value required cheats can be entered (I never found POK
+    file which breaks this rule).
+  - All values are checked every time PokeManager is entered. If you turn on or
+    off any "red" cheat another PokeManager call it turns to "green" one
+    because values in RAM will be alright.
+
 
     Tritol
 

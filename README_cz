@@ -10,12 +10,12 @@ Fièury:
 - Práce s iso9660 (CD-ROM image) pøímo z CD-ROM mechaniky, pøípadnì nahraný
   na ZIP drive, HDD nebo CompactFlash. Pokud image není nahrán od zaèátku média,
   není automaticky detekován a musí být pou¾ita funkce "hledání".
-- Funkce automatického hledání ISO image. Zaèátek image je automaticky nalezen
-  postupným naèítáním média, ale ka¾dá sranda nìco stojí, tak ho nenahrávejte
-  moc "daleko", jinak se vá¾nì naèekáte.
+- Funkce automatického hledání ISO image. Zaèátek image je nalezen postupným
+  naèítáním média, ale ka¾dá sranda nìco stojí, tak ho nenahrávejte moc
+  "daleko", jinak se vá¾nì naèekáte.
 - Mo¾nost procházet celý strom adresáøù a souborù (integrovaný browser).
 - V¹e se pamatuje (naètený adresáø, pozice v nìm, data o TAPce atd.).
-- Detekce tupu souborù; obrázky podle délky, emulátorové soubory podle pøípony.
+- Detekce typu souborù; obrázky podle délky, emulátorové soubory podle pøípony.
 - Prohlí¾ení barevných (6912 B) a èernobílých (6144 B) obrázkù s detekcí barvy
   borderu.
 - Spou¹tìní snapù SNA (48K i 128K).
@@ -26,8 +26,10 @@ Fièury:
   mo¾no nastavit load kurzor. Pokud program ète data pomocí ROM, jsou pøi
   vybrané TAPce ètena z IDE zaøízení, pokud ¾ádná TAPka vybraná není, ète se
   pøímo z MGF (pomocí standardních rutin ROM).
+- Ètení POK souborù a snadné zapínání a vypínání jednotlivých cheatù (cheat je
+  skupina POKE aplikovaných naráz).
 - Modulární struktura - nìkteré èásti je pøi kompilaci mo¾no vypnout a udìlat
-  si tak místo pro nìjaké jiné :)
+  si tak místo pro nìjaké jiné :).
 
 Ovládání NMI menu (klávesy jsou zvýraznìny):
 D = device  - zmìna zaøízení (master/slave).
@@ -56,13 +58,10 @@ F = find    - nalezení ISO image kdekoli na médiu (nelze spustit na reálné
               od aktuální pozice, stisnìte klávesu 'F' spoleènì s 'SYMBOL SHIFT'
               Hledání lze pøeru¹it stiskem 'SPACE'.
 S = sector  - umo¾òuje zadat èíslo sektoru, odkud se bude èíst ISO image,
-              pøípadnì od toho sektoru hledat. Reagují klávesy 0-9 a A-F pro
-              èíslice hexa èísla, 'SPACE' pro posun na dal¹í znak, 'SYMBOL
-              SHIFT' pro posun na pøedcházející znak. Èíslice se zadávají
-              zprava do leva a zále¾í na pozici cifer. Po dosa¾ení sedmé cifry
-              se kurzor pøesune na zaèátek (1. cifra) - nefuguje obrácenì (pøi
-              posunu pomocí 'SYMBOL SHIFT'). 'ENTER' vstup ukonèí a DEMFIR
-              zadaný sektor pou¾ije jako ofset pro naètení ISO image (pokud se
+              pøípadnì od toho sektoru hledat. Ovládání inputu viz. "Ovládání
+              inputu" :). Èíslo je v ¹estnáctkové soustavì, akceptuje znaky
+              0-9 a A-F (nezále¾í na velikosti písmen). Po ukonèení vstupu se
+              èíslo sektoru pou¾ije jako ofset pro naètení ISO image (pokud se
               objeví 'No ISO image found', zkuste hledání.
 V = VRAM    - zobrazí aktuální Video RAM (po stisku NMI je to v¾dy 1.),
               opakovaným stiskem klávesy 'V' lze pøepínat mezi 1. a 2. VRAM.
@@ -71,6 +70,10 @@ V = VRAM    - zobrazí aktuální Video RAM (po stisku NMI je to v¾dy 1.),
               DEMFIR se vrátí do NMI menu. Ve 48K re¾imu pouze zobrazí 1. VRAM,
               pøepínání není mo¾né.
 P = paging  - zaká¾e 128K stránkování (out 32765,48), pouze hw reset ho povolí.
+C = cheat   - (pouze pokud je pøelo¾eno s PokeManagerem) zobrazí seznam a stav
+              aktuálních cheatù (naètených z .POK souboru), pokud ¾ádné
+              aktuální cheaty nejsou, okam¾itì pøejde na ruèní vstup POKE (lze
+              zru¹it kombinací CS+1).
 Enter       - vstup do browseru
 
 Ovládání browseru:
@@ -83,8 +86,24 @@ Ovládání browseru:
 Enter        - akce = zobrazení obrázku (èeká na klávesu), spu¹tìní snapu,
                procházení TAPky èi adresáøe nebo nastavení load kurzoru (zále¾í
                na okolnostech)
-Space        - ukonèení browseru
+Mezerník     - ukonèení browseru
 
+Ovládání inputu:
+CS+1 (EDIT)  - ukonèí vstup bez ulo¾ení hodnoty
+CS+2 (CAPSL) - vyma¾e v¹echny zadané znaky
+CS+4 (INV.V) - vlo¾í mezeru za kurzor
+CS+5 ( <- )  - posune kurzor vlevo
+CS+6 ( ^ )   - pøemístí kurzor na zaèátek øádku
+CS+7 ( v )   - pøemístí kurzor na konec øádku
+CS+8 ( -> )  - posune kurzor vpravo
+CS+9 (GRAPH) - sma¾e znak napravo od kurzoru (delete)
+CS+0 (DEL)   - sma¾e znak nalevo od kurzoru (backspace)
+Enter        - ukonèí vstup s ulo¾ením hodnoty
+Zadávání znakù je v re¾imu "pøepis" (starý znak je nahrazen novì zadaným), pro
+vlo¾ení znakù pøed existující øetìzec pou¾ijte CS+4. Pokud jsou vlo¾eny
+nepøípustné znaky, pøi ukonèení vstupu je kurzor postaven ZA problematický
+znak. Pokud je zadané èíslo mimo povolený rozsah je kurzor postaven na jeho
+konec.
 
 Pøi práci v TAPce je kurzor buï zelený (v¹e ok), èervený (TAPka obsahuje
 nìjakou chybu) nebo ¾lutý (TAPka je OK, ale obsahuje moc souborù a nebyl
@@ -105,19 +124,67 @@ V druhém øádku je seznam podporovaných formátù
 - SNA = snapy SNA, povoluje WITH_SNA v config.a80
 - MFC = snapy MFC, povoluje WITH_MFC v config.a80
 - SCR = prohlí¾eè obrázkù, povoluje WITH_SCR v config.a80
+- POK = PokeManager, povoluje WITH_POK v config.a80
 
 Ve tøetím øádku jsou ostatní moduly a nastavení
 - CHS = podpora pro HDD bez LBA, povoluje WITH_CHS v config.a80
 - WDC = automatické nastavování geometrie pøi detekci zaøízení, vy¾adují
         nìkteré disky Western Caviar, povoluje WITH_WDC v config.a80
 - +3R = stránkuje ROM +2A/+3 na portu 8189, povoluje ROM_2A_3 v config.a80
-- SSv = spoøiè obrazovky (po dvou minutách zèerná obrazovka), povoluje WITH_SS
-        v config.a80
 
 Logo lze zmìnit pomocí LOGO_TNT (pùvodní) nebo LOGO_F6 (nové a hezèí :), pokud
 není povoleno ani jedno, je logo nahrazeno textovým øádkem.
 Komu se nezdá originální zx font, povolením BOLD_FONT v config.a80 si mù¾e
 zapnout tuèný font z Didaktiku M.
+
+PokeManager
+- Ovládání shodné s ovládáním browseru, navíc má následující klávesy:
+  A = add    - pøidá POKE (ruèní vstup).
+  D = delete - sma¾e POKE nebo cheat který je POSLEDNÍ na seznamu.
+  C = clear  - sma¾e ve¹keré cheaty a automaticky pøejde na ruèní zadání POKE.
+- Pro jednotlivé cheaty zobrazuje jejich název a v pøípadì, ¾e se jedná
+  o stavový cheat tak i YES pro aktivní a NO pro neaktivní. Pokud se jedná
+  o cheat vy¾adující hodnotu, zobrazuje aktuální stav pamìti.
+- Barva kurzoru má následující význam:
+  Zelená  - je známa pùvodní hodnota v pamìti a pamì» buï obsahuje ji nebo
+            hodnotu z cheatu, je bezpeèné cheat zapínat i vypínat.
+  ®lutá   - pùvodní hodnota není známa a nebylo tak mo¾no provést ovìøení,
+            pokud jste si jisti, ¾e je naètený správný POK soubor, mìlo by
+            být bezpeèné cheat zapnout, s vypnutím by mohly být problémy.
+  Èervená - je známa pùvodní hodnota v pamìti, ale pamì» neobsahuje ji ani
+            hodnotu z cheatu, je NEBEZPEÈNÉ tento cheat zapínat nebo vypínat
+            a pravdìpodobnì to povede k po¹kození spu¹tìné hry/aplikace.
+- Pøi zadávání èísla pro cheat vy¾adující hodnotu fungují standardní klávesy
+  (viz. Ovládání inputu). Nabízena je PÙVODNÍ hodnota (nikoliv aktuální a
+  zobrazený stav pamìti). Prostým odentrováním je tak mo¾né cheat vypnout.
+- Doporuèený postup práce s PokeManagerem: nahrát hru/aplikaci (jako snap nebo
+  pøes tape emulátor). Znovu vyvolat NMI menu DEMFIRu, v browseru vybrat
+  pøíslu¹ný POK soubor. Nastavit po¾adované cheaty a vrátit se zpìt do
+  hry/programu. Opìtovným vyvolámím PokeManageru z NMI menu pøes klávesu 'C'
+  lze mìnit stav cheatu i kdykoliv pozdìji.
+- Ruèní vstup umo¾òuje zadat pøímo jednotlivé POKE. Do tohoto módu se dá dostat
+  buï klávesou 'A' v PokeManageru nebo kdykoliv kdy¾ je seznam cheatù prázdný
+  a je vyvolán PokeManager. Do vstupní zóny je nabídnut øetìzec, který by mìl
+  pomoci v zadávání (vyu¾itím re¾imu pøepisu). Jde o tøi èísla oddìlená
+  mezarami. První je èíslo 128K RAM stránky (0-7, 8 znamená ignorovat a
+  neprovádìt ¾ádné stránkování), druhé èíslo je adresa (23552-65535) kam zapsat
+  tøetí èíslo, tj. hodnotu POKE (0-255). Po ú¹pì¹ném odeslání se místo názvu
+  cheatu objeví øetìzec, který je slo¾en následovnì:
+  "stránka:adresa,hodnota (originální hodnota z RAM)".
+  Lze tak ovìøit, ¾e zadané hodnoty byly interpretovány správnì. Pak je mo¾no
+  s POKE pracovat jako s ka¾dým jiným cheatem.
+- Omezení PokeManageru:
+  - Maximální velikost POK souboru: 2048 bajtù
+  - Maximální poèet cheatù nebo ruènì zadaných POKE: 24 (jedna obrazovka)
+    Vzhledem k vlastnostem POK souborù mù¾e být maximální poèet cheatù ni¾¹í
+    díky pamì»ové nároènosti jednotlivých cheatù (více hodnot pro jeden cheat).
+  - Pokud cheat vy¾aduje zadání nìjaké hodnoty (tj. nestavový), mù¾e být zadána
+    pouze první hodnota (zatím jsem se nesetkal s POK souborem kde by bylo
+    mo¾no zadat více hodnot pro jeden cheat).
+  - Pøi ka¾dém vyvolání PokeManageru jsou znovu kontrolovány údaje v pamìti
+    a pokud aplikujete "èervený" cheat, pøi dal¹ím vyvolání u¾ z nìj bude
+    "zelený", nebo» data v pamìti budou sedìt.
+
 
     Tritol
 
