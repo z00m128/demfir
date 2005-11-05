@@ -25,7 +25,7 @@ WITH_SCR
 ; prelozit s prohlizecem textovych souboru
 ;WITH_TXT			; not working / nefunguje
 
-; build with poke manager
+; build with PokeManager
 ; prelozit se "spravcem pouku"
 WITH_POK
 
@@ -39,7 +39,7 @@ WITH_WDC
 
 ; build with screen saver
 ; prelozit se sporicem obrazovky
-;WITH_SS	(removed)
+;WITH_SS			; (removed and not used / odstraneno a nepouzito)
 
 ; build with screen capture
 ; prelozit s "tipacem obrazovek"
@@ -51,11 +51,17 @@ WITH_WDC
 ; #### VZHLED ####
 
 ; DEMFIR logo
-; Which logo you can use (if none, only text line will be displayed)
-; Jake logo pouzivat (pokud zadne, bude zobrazen pouze textovy radek)
-LOGO_F6
-;LOGO_TNT
-
+; Which logo you can use
+;  0 - no logo (only text line "DTP's Emulator Files Runner")
+;  1 - old tritol's logo
+;  2 - factor's first logo (with "Powered by divIDE")
+;  3 - factor's second logo (with "Run it for real!")
+; Jake logo pouzivat
+;  0 - bez loga (pouze textovy radek "DTP's Emulator Files Runner")
+;  1 - tritolovo stare logo
+;  2 - prvni factorovo logo (s "Powered by divIDE")
+;  3 - druhe factorovo logo (s "Run it for real!")
+USELOGO	equ	3
 
 ; DEMFIR font
 ; This enables bold font from Didaktim M, if disabled, standard font will be used
@@ -67,7 +73,7 @@ LOGO_F6
 
 ; If you use device which suspend ifself (notebook HDD or CDROM) this causes DEMFIR will wait longer in I/O operations
 ; Pokud pouzivate zarizeni ktere "usina" (CDROM a HDD z notebooku), nastavenim tohoto prinutite DEMFIR cekat dele ve V/V operacich
-;TOUT_LONG (obsoleted/not used)
+;TOUT_LONG	; (obsoleted and not used / zastarale a nepouzito)
 
 ; If you have +2A/+3 machine with original ROM layout (two 32KB ROM chips), MUST be enabled. If you have modified +2A/+3 (32KB ROM and 32KB SRAM), MUST be disabled. For all other machines it's not important (enabled is more compatible).
 ; Pokud mate +2A/+3 s originalnim rozlozenim ROM (dve 32KB pameti), MUSI byt povoleno. Pokud mate upravenou +2A/+3 (32KB ROM a 32KB SRAM), MUSI byt zakazano. Pro ostatni modely neni dulezite (povoleno je vice kompatibilni).

@@ -9,7 +9,7 @@
 
     * New:
     - splitted to two parts, first is in EEPROM, second "boots" into MAPRAM
-    - font is in ROM again and should be standard or bold
+    - font is in ROM again and can be standard or bold
     - changed some printouts in snaps running etc.
     - ROM paging of +2A/+3 can be disabled
     - removed eject ATAPI device
@@ -21,6 +21,7 @@
     - full featured data input (no "Hebrew syndrom" :)
     - all keyboard scans are with key repeat
     - strange sounds (key echo and error beep)
+    - another interesting logo from Factor6
 
 
 2005-02-28

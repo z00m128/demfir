@@ -1,5 +1,5 @@
 SOURCE=demfir.a80
-INCLUDES=config.a80 basic.tpi logo.pck logof6.pck spectrum.font didaktik.font
+INCLUDES=config.a80 basic.tpi logo.pck logof6.pck logof6_2.pck spectrum.font didaktik.font
 VERSION_LONG=$(shell grep "^DVERS" $(SOURCE)|cut -d \" -f 2)
 VERSION=$(shell echo $(VERSION_LONG)|tr -d .)
 BASE=$(SOURCE:%.a80=%$(VERSION))

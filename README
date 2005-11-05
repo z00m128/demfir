@@ -128,8 +128,7 @@ Third line shows other modules and settings
         Western Caviar disks, enabled by WITH_WDC in config.a80
 - +3R = changes ROM of +2A/+3 via port 8189, enabled by ROM_2A_3 in config.a80
 
-Logo can be selected by LOGO_TNT (older) or LOGO_F6 (new and much better), if
-no one is selected simple text line is used.
+Logo can be selected by USELOGO (range 0-3, see config.a80).
 If you don't like standard zx font, enable BOLD_FONT in config.a80 and you will
 get bold font from Didaktik M (czech speccy clone).
 

@@ -132,8 +132,7 @@ Ve tøetím øádku jsou ostatní moduly a nastavení
         nìkteré disky Western Caviar, povoluje WITH_WDC v config.a80
 - +3R = stránkuje ROM +2A/+3 na portu 8189, povoluje ROM_2A_3 v config.a80
 
-Logo lze zmìnit pomocí LOGO_TNT (pùvodní) nebo LOGO_F6 (nové a hezèí :), pokud
-není povoleno ani jedno, je logo nahrazeno textovým øádkem.
+Logo lze zmìnit pomocí USELOGO (rozsah 0-3, viz. config.a80).
 Komu se nezdá originální zx font, povolením BOLD_FONT v config.a80 si mù¾e
 zapnout tuèný font z Didaktiku M.
 

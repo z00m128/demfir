@@ -31,8 +31,8 @@
 
 		include "config.a80"
 
-;DVERS	equ	"d0.6a"
-DVERS	equ	"51027"
+DVERS	equ	"d0.6a"
+;DVERS	equ	"51027"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -1837,6 +1837,7 @@ NOENT	ld	hl,17*32+22528+16
 		ld	bc,12
 		jr	FLASH
 
+	ifdef WITH_POK
 ;prechod do poke manageru
 ENTPOKMAN	ld	a,(GPART2)
 		or	a
@@ -1844,6 +1845,7 @@ ENTPOKMAN	ld	a,(GPART2)
 		rst	40
 		defw	POKEMAN
 		jp	NMIMENU
+	endif
 
 ;change device (master/slave)
 CHDEV
@@ -3642,8 +3644,10 @@ NMIPROG	defb	"q"
 		defw	VRAMSEL
 		defb	"p"
 		defw	DIPAGING
+	ifdef WITH_POK
 		defb	"c"
 		defw	ENTPOKMAN
+	endif
 		defb	13+32			;delame OR 32 kuli malym pismenum
 		defw	ENTBROWS
 		defb	0
@@ -3698,31 +3702,32 @@ FONT		equ	8192-1024
 ;fixme!
 ;od konce fontu 7936 (FONT+768) az do EIROM2 je volne misto, pouzit
 
-;spakovane logo
-	ifdef LOGO_TNT
-		ifdef LOGO_F6
-			error "\aSelect ONE logo, not both!"
-		endif
 
+	if USELOGO = 0
+LOGO		equ	FONT-36
+		org	LOGO
+		rst	24				;call PRINTSP
+		defb 22,8,2,16,3,19,1
+		defb "DTP's Emulator Files Runne",'r'+128
+		ret
+	endif
+
+	if USELOGO = 1
 LOGO		equ	FONT-622
 		org	LOGO
 		binclude "logo.pck"
-		
-	else
-		ifdef LOGO_F6
+	endif
 
+	if USELOGO = 2
 LOGO		equ	FONT-860
 		org	LOGO
 		binclude "logof6.pck"
+	endif
 
-		else
-LOGO		equ	FONT-40
+	if USELOGO = 3
+LOGO		equ	FONT-636
 		org	LOGO
-		rst	24				;call PRINTSP
-		defb 22,8,0,16,7
-		defb "= DTP's Emulator Files Runner ",'='+128
-		ret
-		endif
+		binclude "logof6_2.pck"
 	endif
 
 
