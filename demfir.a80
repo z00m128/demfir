@@ -1,11 +1,11 @@
 ; DEMFIR - DTP's EMulator FIles Runner
 ;
-; This program can use some of ZX Spectum emulator files (.sna, .z80, .tap) on
-; real ZX Spectrum with IDE interface. It reads these files from ISO9660
+; This program can use some of ZX Spectum emulator files (.sna, .z80, .tap, .tzx)
+; on real ZX Spectrum with IDE interface. It reads these files from ISO9660
 ; filesystem. Snapshots are directly loaded and runned, tap files are emulated
 ; like standard tape.
 ;
-; Copyright (C) 2000-2005  Lubomir Blaha <tritol(at)trilogic(dot)cz>
+; Copyright (C) 2000-2007  Lubomir Blaha <tritol(at)trilogic(dot)cz>
 ; http://sourceforge.net/projects/demfir/
 ;
 ; This program is free software; you can redistribute it and/or modify
@@ -31,8 +31,8 @@
 
 		include "config.a80"
 
-DVERS	equ	"d0.6a"
-;DVERS	equ	"51027"
+DVERS	equ	"d0.7a"
+;DVERS	equ	"61026"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -214,8 +214,10 @@ POZICE	equ	KURCOL-1
 VYPIS	equ	POZICE-2
 ;kde v indexu zacina 2. sektor
 ADR2SEC	equ	VYPIS-2
+;kde v indexu je odkaz na posledni soubor
+INDLAST	equ	ADR2SEC-2
 ;jsou nactena data aktualni
-DISKACT	equ	ADR2SEC-1
+DISKACT	equ	INDLAST-1
 
 ;delka aktualniho adresare v sektorech (browser)
 DIRLEN	equ	DISKACT-2
@@ -227,7 +229,7 @@ TAPACT	equ	ACTSDIR-1
 ;jmeno aktualni tapky (32 B)
 TAPNAME	equ	TAPACT-32
 ;celkova delka tapky-pro index
-;musi byt v tomto poradi
+;musi byt v tomto poradi (TAPLEN2 a za nim TAPLEN)
 TAPLEN	equ	TAPNAME-4
 ;-pro vypis
 TAPLEN2	equ	TAPLEN-4
@@ -246,17 +248,14 @@ CACHELBA	equ	CACHEKUR-3
 ;kolik B z nej je jeste k disp.
 CACHEREM	equ	CACHELBA-2
 
-;aktualni adresa tiskaci rutiny
-;spolecne s instrukci JP
+;aktualni adresa tiskaci rutiny spolecne s instrukci JP
 ACTPRINT	equ	CACHEREM-3
 ;aktualni adresa kam psat
-;2. a 3. byte ukazatel do tab.
-;adrvram (radek), prvni byte
-;sloupec
+;2. a 3. byte ukazatel do tab. adrvram (radek), prvni byte sloupec
 PRINTPOZ	equ	ACTPRINT-3
 ;aktualni atribut
 ACTATTR	equ	PRINTPOZ-1
-;priznak inverze (0=ne,255=ano)
+;priznak inverze (0=ne, 255=ano)
 ATTRINV	equ	ACTATTR-1
 
 ;kontrolni soucet ROM, pokud nesedi, inicializace
@@ -270,7 +269,7 @@ REPPER	equ	ISOSTART-1
 LASTKEY	equ	REPPER-1
 
 ;buffer pro input
-INPBUFF	equ	LASTKEY-13		;3+2 a 11+2 pro POK, 7+2 pro LBA
+INPBUFF	equ	LASTKEY-13		;3+2 a 11+2 pro POK, 7+2 pro LBA, 12+1 pro FileFind
 
 ;kam kreslit kurzor pri inkeys (0=nikam)
 IKURPOS	equ	INPBUFF-2
@@ -309,8 +308,20 @@ INTCNT	equ	SNAPAGE-2		;pocitadlo preruseni (jede porad dokola)
 ;0=neni, 2=je (2 kuli snadnemu vypisu)
 GPART2	equ	INTCNT-1
 
+;pocitadlo znaku pro hledani souboru
+FFCNT	equ	GPART2-1
+
+;docasne misto pro ulozeni cisla bloku tzx (registry dosly)
+TZXBLKID	equ	FFCNT-1
+
+;docasne misto pro pozici v bufferu
+TZXBPOS	equ	TZXBLKID-2
+
+;flag zda pri cteni klaves testovat shifty ci nikoliv
+INPSHFT	equ	TZXBPOS-1
+
 ;stack pri nacitani snapu
-LOADSTACK	equ	GPART2
+LOADSTACK	equ	INPSHFT
 
 ENDVRS	equ	LOADSTACK-100
 
@@ -319,8 +330,12 @@ CACHE	equ	8192
 ;misto pro nacitani sektoru adresare - browser (4096B)
 BUFFER	equ	CACHE+2048
 
-;misto pro odkazy do adresare 2*293 polozek + 2 konc. znaky (588B)
-INDEX	equ	BUFFER+4096
+;misto pro nacitani "hlavicek" TZX bloku (20B)
+;je velice vyhodne mit ho na adrese s L=0 (nutne!!!)
+TZXBUFF	equ	BUFFER+4096
+
+;misto pro odkazy do adresare 2*293 polozek + 2 konc. znaky (588B) (4 konc. znaky ne?)
+INDEX	equ	TZXBUFF+20
 
 	ifdef WITH_POK
 ;24+1 zaznamu, odkazy do POKDATA
@@ -339,7 +354,6 @@ POKDATA	equ	2*25+POKTAB
 ;defb puvodni hodnota z .pok (0 neznamo)
 ;misto pro 24 zaznamu s jednou hodnotou nebo min zaznamu s vice hodnotami
 POKEND	equ	35*24+POKDATA		;pocita s koncovymi znackami
-;POKEND	equ	INDEX+588
 	else
 POKEND	equ	INDEX+588
 	endif
@@ -576,8 +590,7 @@ ADDLBA2	push	de
 		pop	de
 		ret
 
-;odecte od LBA (ukaz. v HL)
-;cislo v reg. BC
+;odecte od LBA (ukaz. v HL) cislo v reg. BC
 SUBLBA2	push	de
 		ld	a,(hl)
 		inc	hl
@@ -841,8 +854,7 @@ GETISO1	ld	hl,BUFFER
 
 ;vytvori index sektoru
 ;v HL adresa prvniho souboru
-GETISO2
-		push	hl
+GETISO2	push	hl
 		ld	hl,INDEX
 		ld	bc,588-1
 		xor	a
@@ -850,13 +862,13 @@ GETISO2
 		ld	de,INDEX+2
 		pop	hl
 		call	GETIND
+		ld	(ADR2SEC),de
 		ld	hl,(DIRLEN)
 ;adresar ma jen jeden sektor?
 		dec	hl
 		ld	a,l
 		or	h
 		ret	z
-		ld	(ADR2SEC),de
 		ld	hl,BUFFER+2048
 ;		jp	GETIND
 ;sem nic nepridavat!
@@ -870,10 +882,9 @@ GETIND	ld	bc,2048
 		ld	b,h
 		ld	c,l
 		pop	hl
-GETINDSM
-		ld	a,(hl)
+GETINDSM	ld	a,(hl)
 		or	a
-		ret	z
+		jr	z,GETINDEND
 		ex	de,hl
 		ld	(hl),e
 		inc	hl
@@ -884,12 +895,15 @@ GETINDSM
 		ld	c,a
 		ld	b,0
 		add	hl,bc
-;tohle tu asi nemusi byt, ale pro jistotu
+;tohle tu asi nemusi byt (iso9660 dir sektor konci vzdycky nulou?), ale pro jistotu
 		pop	bc
 		or	a
 		sbc	hl,bc
 		add	hl,bc
 		jr	c,GETINDSM
+GETINDEND	dec	de				;predesla polozka (tj. posledni)
+		dec	de
+		ld	(INDLAST),de
 		ret
 
 
@@ -897,11 +911,11 @@ GETINDSM
 ;(ceka) s autorepeatem
 ;potrebuje povolene preruseni
 ;hodnota v A a D
-INKEYS3	ld	a,CON_DEL
-		ld	(REPPER),a
-		xor	a
-		ld	(LASTKEY),a
-INKEYS	ld	hl,(IKURPOS)
+INKEYSRAW	xor	a
+		defb	33				;preskoceni dalsi instrukce
+INKEYS	ld	a,255
+		ld	(INPSHFT),a
+INKEYSX	ld	hl,(IKURPOS)
 		ld	a,h
 		or	l
 		jr	z,INKEYS4
@@ -932,12 +946,17 @@ DOBA		call	KEYSCAN
 		ld	a,e
 		inc	a
 		jr	z,INKEYS3
-;pouze CAPS SHIFT
+		ld	a,(INPSHFT)		;bez testu shiftu?
+		or	a
+		jr	z,INKEYSY
 		ld	a,d
-		ld	hl,KEYSSHTAB
-		cp	$27
+		ld	hl,KEYSSSTAB
+		cp	$18				;SS
 		jr	z,INKEYS2
-		ld	hl,KEYSTAB
+		ld	hl,KEYSCSTAB
+		cp	$27				;CS
+		jr	z,INKEYS2
+INKEYSY	ld	hl,KEYSTAB
 INKEYS2	ld	d,0
 		add	hl,de
 		ld	a,(hl)
@@ -949,10 +968,16 @@ INKEYS2	ld	d,0
 		ld	(hl),a
 		jr	INKEYSPOL
 
+INKEYS3	ld	a,CON_DEL
+		ld	(REPPER),a
+		xor	a
+		ld	(LASTKEY),a
+		jr	INKEYSX
+
 MINANO	ld	d,a
 		ld	a,(REPPER)
 		dec	a
-		jr	nz,INKEYS
+		jr	nz,INKEYSX
 		ld	a,CON_REP
 		ld	(REPPER),a
 		ld	a,d
@@ -1255,7 +1280,7 @@ INCTRL1	dec	a				;CS+1 (edit)
 		bit	7,(hl)
 		jr	nz,INPUTSM2
 		dec	hl
-		jr	INPUT3
+BYTESAVE1	jr	INPUT3
 
 INCTRL2	dec	a				;CS+8
 		jr	nz,INCTRL3
@@ -1263,7 +1288,7 @@ INCTRL2	dec	a				;CS+8
 		inc	hl
 		bit	7,(hl)
 		jr	nz,INPUTSM2
-		jp	INPUT3
+		jr	BYTESAVE1
 
 INCTRL3	dec	a				;CS+6
 		jr	nz,INCTRL4
@@ -1276,7 +1301,7 @@ INCTRL4	dec	a				;CS+7
 		jr	nz,INCTRL5
 ;end
 		call	INPUTFEND
-		jp	INPUT3
+		jr	BYTESAVE1
 
 INCTRL5	dec	a				;CS+0
 		jr	nz,INCTRL6
@@ -1313,7 +1338,7 @@ INPCHAR	inc	hl
 		bit	7,(hl)
 		jp	nz,INPUTSM2
 		ld	(hl),a
-		jp	INPUT3
+		jr	BYTESAVE1
 
 
 ;najde konec input bufferu (ukazuje na posledni platny znak)
@@ -1322,13 +1347,6 @@ INPUTFEND	inc	hl
 		jr	z,INPUTFEND
 		dec	hl
 		ret
-
-
-
-;fixme! spousta mista tu je
-
-
-
 
 BEF_SVBE
 ;odchyceni save (jen pokracuje zpet v ZX ROM)
@@ -1343,7 +1361,26 @@ GAP_SVBE	equ	$-BEF_SVBE
 		jp	TOBASROM
 ;konec odchyceni save
 
+;test "signatury" image
+;NZ-neni to on
+CHECKBOOT	ld	hl,BOOTMEM+PAGESIGN
+		ld	bc,5
+		ld	de,DVRSN
+		jr	MEMCMP
 
+;porovnani signatury PDV
+;Z-nalezena
+CHECKPVD	ld	bc,6
+		ld	de,ISOSIGN
+;porovna dva useky v pameti
+;HL-prvni, DE-druhy, BC-delka
+;Z-rovnaji se
+MEMCMP	ld	a,(de)
+		cpi
+		ret	nz
+		inc	de
+		jp	pe,MEMCMP
+		ret
 
 
 ;fixme! spousta mista tu je
@@ -1366,8 +1403,7 @@ GAP_LDBE	equ	$-BEF_LDBE
 ;konec odchyceni load
 
 
-;pocka par preruseni, aby hned
-;nezabraly testy klaves
+;pocka par preruseni
 NOSIFR	halt
 NOSIFR2	halt
 		halt
@@ -1375,8 +1411,7 @@ NOSIFR2	halt
 		halt
 		ret
 
-;vytiskne LBA zacatku image a
-;LBA max. adresovatelneho sekt.
+;vytiskne LBA zacatku image a LBA max. adresovatelneho sekt.
 LBAS		ld	hl,(ISOSTART+2)
 		call	PRNT12HX
 		ld	hl,(ISOSTART)
@@ -1532,6 +1567,9 @@ INFO4	rst	16
 	endif
 	ifdef ROM_2A_3
 		defb	"+3R "
+	endif
+	ifdef WITH_MTF
+		defb	"MTF "
 	endif
 ;	ifdef TOUT_LONG
 ;		defb "LoT "
@@ -1743,8 +1781,7 @@ SPOLMED	ld	a,16
 ;		call	DEMFSS
 ;		jp	NMIMENU
 ;	endif
-NMIKEYS	call	INKEYS
-		set	5,d
+NMIKEYS	call	INKEYSRAW
 		ld	hl,NMIPROG
 NMIK4	ld	a,(hl)
 		or	a
@@ -1774,7 +1811,6 @@ NMIK3	ld	a,(hl)
 ;		jr	nz,NOENT
 ;		ld	hl,EJECT
 ;		call	ATAPICOM
-;		call	NOSIFR
 ;		jp	NEWMED
 
 NOMED	ld	hl,15*32+22528+16
@@ -1797,7 +1833,6 @@ FLASH2	halt
 MEDIUM	ld	a,(ix+33)
 		or	a
 		jr	z,NOMED
-;		call	NOSIFR
 		jp	NEWMED
 
 ;find image
@@ -1849,7 +1884,6 @@ ENTPOKMAN	ld	a,(GPART2)
 
 ;change device (master/slave)
 CHDEV
-;		call	NOSIFR
 		ld	a,(DEVICE)
 		xor	16
 		jp	NEWMED2
@@ -1931,7 +1965,6 @@ DIPAGING	ld	a,48+64			;kratky out
 		out	(253),a
 		ld	a,128
 		ld	(ACTPAGE),a
-;		call	NOSIFR
 		jp	NMIMENU
 
 
@@ -2069,6 +2102,27 @@ CARD3	push	hl
 		or	a
 		ret
 
+;preskoci DEBC bajtu od posledniho mista
+;zatim vyuzivano pouze pro TZX
+;fixme! prepsat na jednorazove a ne volanim CASEEK
+CALSEEK	push	de
+		call	CASEEK
+		pop	de
+		ret	c
+		ld	a,e
+		or	d
+		ret	z
+		dec	de
+;nejde seek po 64K, takze "per partes" :(
+		ld	bc,32768
+		push	de
+		push	bc
+		call	CASEEK
+		ret	c
+		pop	bc
+		pop	de
+		jr	CALSEEK
+
 ;preskoci BC bajtu od posledniho mista
 CASEEK	ld	hl,(CACHEREM)
 		ld	a,l
@@ -2143,8 +2197,7 @@ CASK3	push	hl
 
 
 ;zjisti stav zarizeni
-GETREADY
-		ld	a,(ix+33)
+GETREADY	ld	a,(ix+33)
 		or	a
 		call	nz,GETRDY2
 		ld	(STATUS),a
@@ -2155,8 +2208,7 @@ GETREADY
 		ld	(DISKNAME),a
 		ret
 
-GETRDY2
-		ld	a,(ix+32)
+GETRDY2	ld	a,(ix+32)
 		or	a
 		ret	z
 ;a=0 - no lba
@@ -2546,7 +2598,6 @@ INPUTSEC4	ld	(hl),a
 		call	nz,STO16HX2		;pouze pokud neni 0
 		ld	hl,(ISOSTART)
 		call	STO16HX2			;pokud uz jednou probehlo, bude v iyl znak 0
-;		call	NOSIFR
 INPUTSEC5	ld	hl,0
 INPUTSEC2	ld	iy,17*256+15		;pozice
 		call	INPUT
@@ -2593,10 +2644,7 @@ IVALOK	ld	(ISOSTART),bc
 		ret
 
 
-;hleda na hdd/cf/zip iso image
-;a nacte primary volume
-;descriptor disku
-;FIXME co kdyz je bootovatelne CD?
+;hleda na hdd/cf/zip iso image a nacte primary volume descriptor disku
 FINDISO
 		rst	24				;call PRINTSP
 		defb	22,18,0,18,1,16,2
@@ -2667,19 +2715,12 @@ FNDNOPR	ld	a,1
 		pop	hl
 ;pri chybe zadny image nalezen
 		jr	c,NOISOFND
-;porovnani signatury primary
-;volume descriptoru
-		ld	bc,6
-		ld	de,ISOSIGN
-FINDISO4	ld	a,(de)
-		cpi
+;porovnani signatury primary volume descriptoru
+		call	CHECKPVD
 		jr	nz,FINDISO5
-		inc	de
-		jp	pe,FINDISO4
 		pop	de
 		pop	bc
-;zacatek image je o 16 2048B
-;sektoru drive nez prim.vol.de.
+;zacatek image je o 16 2048B sektoru drive nez PVD
 		ld	hl,16*4
 		ex	de,hl
 		or	a
@@ -2730,7 +2771,7 @@ GETPVD	call	RDYCHNG
 		ld	(LBADISK),a
 		ld	hl,16*256
 		ld	(LBADISK+1),hl
-;lba je MSB
+;LBA je MSB
 		ld	hl,BUFFER
 		ld	de,LBADISK
 		push	hl
@@ -2738,13 +2779,8 @@ GETPVD	call	RDYCHNG
 		pop	hl
 		ret	c
 ;je to skutecne PVD?
-		ld	bc,6
-		ld	de,ISOSIGN
-GETPVD2	ld	a,(de)
-		cpi
+		call	CHECKPVD
 		ret	nz
-		inc	de
-		jp	pe,GETPVD2
 ;je, prenes data
 		ld	hl,BUFFER+40
 		ld	de,DISKNAME
@@ -2754,10 +2790,8 @@ GETPVD2	ld	a,(de)
 		ld	de,LBADISK
 		ld	bc,3
 		ldir
-;prenes velikost iso image
-;musime po pulkach kuli jiz
-;hotovemu ostatnimu kodu
-;(pocita s prohozenim po 16b)
+;prenes velikost iso image musime po pulkach kuli jiz
+;hotovemu ostatnimu kodu (pocita s prohozenim po 16b)
 		ld	hl,(BUFFER+80)
 		ld	(MEDSIZE+2),hl
 		ld	hl,(BUFFER+82)
@@ -2778,26 +2812,97 @@ DASBOOT	ld	a,MAPRPAGE
 		ldir
 		xor	a
 		out	(RAMPORT),a
-		ld	a,4				;4x 2kb
+;prvni zkus generic boot image (od zacatku media)
+		ld	a,4			;4x 2kb
 		pop	hl
 		push	hl
-		ld	de,TUREADY		;potrebujem tri nuly
+		ld	de,TUREADY	;potrebujem tri nuly
 		call	READSEC
-		ld	a,MAPRPAGE
-		out	(RAMPORT),a
+		jp	c,BADBOOT		;chyba pri cteni, ma cenu zkouset el-torito? nejspis ne
+		call	CHECKBOOT
+		jr	z,BOOTRDY
+;generic to neni, zkus el-torito
+		xor	a
+		pop	hl
+		push	hl
+		ld	e,l
+		ld	d,h
+;LBA je MSB
+		ld	(hl),a
+		inc	hl
+		ld	(hl),a
+		inc	hl
+		ld	(hl),17
+		dec	hl
+		dec	hl
+		push	de
+		call	READ1SEC
+		pop	de
 		jr	c,BADBOOT
-;je to "nas" image?
-		ld	hl,BOOTMEM+PAGESIGN
-		ld	bc,5
-		ld	de,DVRSN
-TSTPT	ld	a,(de)
-		cpi
+;porovnani signatury boot volume descriptoru
+		inc	de			;bez prvniho byte
+		ld	hl,ETSIGN
+		ld	bc,15
+		call	MEMCMP
 		jr	nz,BADBOOT
-		inc	de
-		jp	pe,TSTPT
+		ex	de,hl
+		ld	bc,55
+		add	hl,bc
+;tady je LBA LSB :(
+		ld	a,(hl)
+		inc	hl
+		inc	hl
+		ld	c,(hl)
+;ctvrty LBA byte ignorujeme (na cd nebude nikdy pouzit)
+		ld	(hl),a
+		dec	hl
+		dec	hl
+		ld	(hl),c
+		ex	de,hl
+		pop	hl
+		push	hl
+		call	READ1SEC
+		jr	c,BADBOOT
+;validation entry neresime
+		pop	hl
+		push	hl
+		ld	bc,32
+		add	hl,bc
+;default boot entry
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		ld	de,2*256+136	;1.44 disketa a bootable polozka
+		ex	de,hl
+		sbc	hl,bc		;nc od add hl,bc
+		jr	nz,BADBOOT
+		ex	de,hl
+		ld	bc,7
+		add	hl,bc
+;tady je LBA taky LSB :(
+		ld	a,(hl)
+		inc	hl
+		inc	hl
+		ld	c,(hl)
+;ctvrty LBA byte ignorujeme (na cd nebude nikdy pouzit)
+		ld	(hl),a
+		dec	hl
+		dec	hl
+		ld	(hl),c
+;nas image je jeste o jeden cd sektor dale
+		ld	c,1			;v B je 0
+		call	ADDLBA2
+		ex	de,hl
+		pop	hl
+		push	hl
+		ld	a,4			;4x 2kb
+		call	READSEC
+		jr	c,BADBOOT
+		call	CHECKBOOT
+		jr	nz,BADBOOT
 ;inicializace ram jako po resetu
 ;jinak od bootu do reseru nesly spoustet snapy
-		ld	a,BACKPAGE
+BOOTRDY	ld	a,BACKPAGE
 		out	(RAMPORT),a
 		ld	hl,TRDOSWRAP+PAGESIGN
 		ld	de,TRDOS
@@ -2822,7 +2927,9 @@ TSTPT	ld	a,(de)
 		ret
 
 ;vratime puvodni pamet
-BADBOOT	pop	de				;zdroj a cil prohodit
+BADBOOT	ld	a,MAPRPAGE
+		out	(RAMPORT),a
+		pop	de				;zdroj a cil prohodit
 		pop	hl
 		pop	bc
 		ldir
@@ -3604,7 +3711,9 @@ TUREADY	defw	0,0,0,0,0,0
 
 ;podle ceho se poznava ISO image pri hledani
 ISOSIGN	defb	1
-		defb	"CD001"
+ETSIGN	defb	"CD001"			;spolecne pro ISO i EL TORITO
+;podle ceho se pozna EL TORITO
+		defb	1,"EL TORITO"
 
 ;tabulka pro prekodovani kodu
 ;klaves z KEYSCANu
@@ -3614,13 +3723,19 @@ KEYSTAB	defb	"bhy65tgv"
 		defb	0,"lo92wsz"
 		defb	' ',13,"p01qa"
 		defb	0
-KEYSSHTAB	defb	"BHY",10,8,"TGV"
+KEYSCSTAB	defb	"BHY",10,8,"TGV"
 		defb	"NJU",11,5,"RFC"
 		defb	"MKI",9,4,"EDX"
 		defb	0,"LO",14,6,"WSZ"
 		defb	' ',13,'P',12,7,"QA"
 		defb	0
-
+KEYSSSTAB	defb "*^[&%>}/"
+		defb ",-]'$<{?"
+		defb ".+",127,"(#"		;(c)
+		defb	"|",92,96			;(SS+E=|), backslash, pound
+		defb	0,"=;)@||:"		;(SS+W=|)
+		defb	" ",13,34,"_!."	;(SS+Q=.)
+		defb "~",0
 
 ;kody klaves NMI menu spolecne s obsluznymi programy
 NMIPROG	defb	"q"
@@ -3648,7 +3763,7 @@ NMIPROG	defb	"q"
 		defb	"c"
 		defw	ENTPOKMAN
 	endif
-		defb	13+32			;delame OR 32 kuli malym pismenum
+		defb	13
 		defw	ENTBROWS
 		defb	0
 
@@ -4067,9 +4182,9 @@ AYFILL	ld	a,(hl)
 GETFILE	ld	a,(POZICE)
 		add	a,a
 		ld	hl,(VYPIS)
-		ld	c,a
-		ld	b,0
-		add	hl,bc
+		ld	e,a
+		ld	d,0
+		add	hl,de
 		ld	e,(hl)
 		inc	hl
 		ld	d,(hl)
@@ -4100,7 +4215,7 @@ LD_BYTES	in	a,($FE)
 		in	a,($FE)
 		jp	ROMSRAM
 
-;sice by melo byt, pro jistotu
+;preruseni by melo byt, ale pro jistotu
 TPEMUL	di
 ;test na verify
 		ex	af,af'
@@ -4169,7 +4284,12 @@ TPCONT	ld	bc,17
 		ldir
 		jr	TPSPOL
 
-TPTELO	push	ix
+;test na std. blok, ostatni preskoc
+TPTELO	ld	a,(hl)
+		cp	$10
+		jr	nz,TPEML3
+		inc	hl
+		push	ix
 		push	de
 		push	hl
 		rst	40
@@ -4184,7 +4304,7 @@ TPTELO	push	ix
 TPTELOX	rst	40
 		defw	GETREADY
 		pop	hl
-		inc	hl
+		inc	hl		;preskoceni LBA
 		inc	hl
 		inc	hl
 		ld	c,(hl)
@@ -4312,10 +4432,10 @@ CARDO1	ld	hl,CACHE
 ;program pro urceni souboru
 CDBROWS	rst	40
 		defw	PRINTINI
-AGAIN	ei
-;		rst	40
-;		defw	NOSIFR
-		di
+AGAIN	di
+;inicializace hledani souboru
+		xor	a
+		ld	(FFCNT),a
 		ld	a,(TAPACT)
 		or	a
 		jp	nz,NEXTPG
@@ -4359,7 +4479,7 @@ AGAIN	ei
 		ld	(DISKACT),a
 TAPBROWS	ld	a,4*8
 BROWSTR	ld	(KURCOL),a
-		ld	hl,INDEX+2
+TPBRSNC	ld	hl,INDEX+2
 		ld	(VYPIS),hl
 		xor	a
 		ld	(POZICE),a
@@ -4393,7 +4513,7 @@ TPCTST	ex	de,hl
 		push	bc
 		ld	a,(TAPACT)
 		or	a
-		jr	z,ISOLIST
+		jp	z,ISOLIST
 		inc	hl
 		ld	a,h
 		or	l
@@ -4411,11 +4531,11 @@ TAPLIST	ld	a,c
 		inc	hl
 		ld	d,(hl)
 		inc	hl
-		ld	bc,17
 		or	a
 ;pokud flag != 0, je to telo
 		jr	nz,LITELO
 ;nc
+		ld	bc,17
 		ex	de,hl
 		sbc	hl,bc
 		add	hl,bc
@@ -4465,7 +4585,38 @@ TAPLIST	ld	a,c
 		defw	PRINTHL
 		jp	DIRSPOL
 
-LITELO	push	de
+;vypis dat od TZX
+LITELO	ld	c,a
+		ld	a,(hl)
+		cp	$10
+		jr	z,LITELO2
+;tisknot i delku v DE? asi ne
+		push	af
+		rst	40
+		defw	PRINTHEX
+		pop	af
+	ifdef WITH_MTF
+		ld	l,a
+		ld	h,0
+		ld	a,' '
+		rst	16
+		add	hl,hl
+		ld	de,TZXTEXTS
+		add	hl,de
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		call	PRINT128R
+	else ;WITH_MTF
+		rst	24				;call PRINTSP
+		defb	" TZX extended databloc",'k'+128
+	endif ;WITH_MTF
+		jr	DIRSPOL
+
+;std. bloky
+LITELO2	push	de
+		ld	a,c
 		rst	40
 		defw	PRINTHEX
 		rst	24				;call PRINTSP
@@ -4550,7 +4701,18 @@ VYBER	call	KURZOR
 		ld	a,(TAPACT)
 		or	a
 		jr	nz,VYBERSM
-		call	GETFILE
+		ld	a,(FFCNT)
+		or	a
+		jr	z,FLPRM
+		ld	b,a
+		rst	24
+		defb	22,23,0,"Search:",' '+128
+		ld	hl,INPBUFF
+		rst	40
+		defw	PRINTB
+		jr	VYBERSM
+
+FLPRM	call	GETFILE
 		rst	40
 		defw	FILEPARM
 VYBERSM
@@ -4565,7 +4727,18 @@ VYBERSM
 ;	endif
 		rst	40
 		defw	INKEYS
-		cp	'7'
+;TRUE_VIDEO je prefix, ber dalsi znak jako znak pro hledani
+		cp	4
+		jr	nz,BROWKEYS
+		ld	a,1
+		out	(254),a
+		rst	40
+		defw	INKEYS
+		xor	a
+		out	(254),a
+		jp	FILEFIND
+
+BROWKEYS	cp	'7'
 		jr	z,UP
 		cp	11
 		jr	z,UP
@@ -4584,8 +4757,8 @@ VYBERSM
 		cp	13
 		jp	z,ENTER
 		cp	' '
-		jr	nz,VYBERSM
-		ret
+		ret	z
+		jp	FILEFIND
 
 UP
 ;screensaver removed
@@ -4618,9 +4791,13 @@ UP2
 		dec	b
 UDSPOL	ld	a,b
 		ld	(POZICE),a
-;		rst	40
-;		defw	NOSIFR2
-		jp	VYBER
+;zrusi hledani
+		ld	hl,FFCNT
+		ld	a,(hl)
+		or	a
+		jp	z,VYBER
+		ld	(hl),0
+		jp	CLSTATUS
 
 DOWN
 ;screensaver removed
@@ -4663,6 +4840,9 @@ PGUP
 		jr	nz,UDSPOL
 		call	DOPGUP
 		jp	c,VYBERSM
+;zrusi hledani
+		xor	a
+		ld	(FFCNT),a
 		jp	NEXTPG
 
 PGDW
@@ -4702,15 +4882,13 @@ DOPGUP	ld	hl,(VYPIS)
 		sbc	hl,de
 		add	hl,de
 		jp	nc,DOPGSPL
-;jestli ma adresar predesly
-;sektor nacteme ho
+;jestli ma adresar predesly sektor, nacteme ho
 ;jestli aktivni tapka, navrat
 		ld	a,(TAPACT)
 		or	a
 		scf
 		ret	nz
-;jsou nacteny 2 sektory, ale
-;ulozene je cislo prvniho
+;jsou nacteny 2 sektory, ale ulozene je cislo prvniho
 		ld	hl,(ACTSDIR)
 		dec	hl
 		ld	a,l
@@ -4721,18 +4899,14 @@ DOPGUP	ld	hl,(VYPIS)
 		ld	bc,1
 		rst	40
 		defw	SUBLBA2
-;druhy sektor by sel v pameti
-;presunout ldirem, ale muselo
-;by se to sloziteji testovat,
-;takhle to neni o moc pomalejsi
+;druhy sektor by sel v pameti presunout ldirem, ale muselo
+;by se to sloziteji testovat, takhle to neni o moc pomalejsi
 		rst	40
 		defw	GETISO1
 ;FIXME! osetreni chyby
 		ret	c
 ;posun vsechny ukazatele
-;tohle by slo i drive, ale
-;po prip.chybe cteni by to bylo
-;spatne
+;tohle by slo i drive, ale po prip.chybe cteni by to bylo spatne
 		ld	hl,(ACTSDIR)
 		dec	hl
 		ld	(ACTSDIR),hl
@@ -4746,11 +4920,9 @@ DOPGUP	ld	hl,(VYPIS)
 		ld	e,(hl)
 		ld	d,0
 		add	hl,de
-DOPGUP2
-		rst	40
+DOPGUP2	rst	40
 		defw	GETISO2
-;kolik polozek pridame? (pocet
-;zaznamu z nacteneho sektoru)
+;kolik polozek pridame? (pocet zaznamu z nacteneho sektoru)
 		ld	hl,(ADR2SEC)
 ;+44 je posun na dalsi stranku
 		ld	de,INDEX+2+44
@@ -4762,9 +4934,8 @@ DOPGUP2
 		or	a
 		ret
 
-DOPGDW
-		ld	hl,(VYPIS)
 ;posun na dalsi stranku
+DOPGDW	ld	hl,(VYPIS)
 		ld	de,22*2
 		add	hl,de
 		ld	de,INDEX+588
@@ -4792,21 +4963,15 @@ DOPGDWX	call	DOPGDW2
 		ret	nc
 		ld	(VYPIS),hl
 		jp	FINDEND
-;FINDEND dela or a
-;		call	FINDEND
-;		or	a
-;		ret
 
 DOPGSPL2	pop	hl
 DOPGSPL	ld	(VYPIS),hl
 		or	a
 		ret
 
-;jestli ma adresar dalsi sektor
-;nacteme ho
-DOPGDW2
+;jestli ma adresar dalsi sektor, nacteme ho
 ;jestli aktivni tapka, navrat
-		ld	a,(TAPACT)
+DOPGDW2	ld	a,(TAPACT)
 		or	a
 		scf
 		ret	nz
@@ -4817,8 +4982,7 @@ DOPGDW2
 		or	h
 		scf
 		ret	z
-;jsou nacteny 2 sektory, ale
-;ulozene je cislo prvniho
+;jsou nacteny 2 sektory, ale ulozene je cislo prvniho
 		ld	bc,(ACTSDIR)
 		or	a
 		sbc	hl,bc
@@ -4828,18 +4992,14 @@ DOPGDW2
 		ld	bc,1
 		rst	40
 		defw	ADDLBA2
-;druhy sektor by sel v pameti
-;presunout ldirem, ale muselo
-;by se to sloziteji testovat,
-;takhle to neni o moc pomalejsi
+;druhy sektor by sel v pameti presunout ldirem, ale muselo
+;by se to sloziteji testovat, takhle to neni o moc pomalejsi
 		rst	40
 		defw	GETISO1
 ;FIXME! osetreni chyby
 		ret	c
 ;posun vsechny ukazatele
-;tohle by slo i drive, ale
-;po prip.chybe cteni by to bylo
-;spatne
+;tohle by slo i drive, ale po prip.chybe cteni by to bylo spatne
 ;kolik polozek ubereme?
 		ld	hl,(ACTSDIR)
 		inc	hl
@@ -4874,6 +5034,139 @@ DOPGDWY	dec	b
 		or	a
 		ret
 
+;hledani souboru psanim jeho jednotlivych znaku
+FILEFIND	ld	a,(TAPACT)
+		or	a
+		jp	nz,VYBERSM
+		ld	hl,FFCNT
+		ld	a,d
+		cp	12				;backspace
+		ld	a,(hl)
+		jr	nz,FLFND2
+		or	a
+		call	z,BEEPR
+		jp	z,VYBERSM
+		dec	(hl)
+		jp	CLSTATUS
+
+FLFND2	cp	12				;max. pocet znaku
+		call	nc,BEEPR
+		jp	nc,VYBERSM
+		ld	c,a
+		ld	b,0
+		inc	(hl)
+		ld	hl,INPBUFF
+		add	hl,bc
+		ld	(hl),d
+;samotne hledani
+;aktualni soubor odpovida? pak neni potreba dal hledat
+		call	GETFILE
+;DE=index, HL=polozka, BC=delka hledani (B=0)
+		push	bc
+		push	de
+		call	BUFFCMP
+		pop	hl
+		pop	bc
+		jp	z,CLSTATUS	;kdyz se rovnaji, finito
+		jr	nc,SRCHDWN	;hledat dopredu nebo dozadu?
+
+;hledani smerem k prvni polozce
+;hloupate linearni prohledavani, vzhledem ke strukture ISO9660 asi nic
+;chytrejsiho nepujde :(
+SRCHUP	ld	a,2*8
+		push	bc
+		call	KURZORC
+		pop	bc
+		ld	a,(POZICE)
+		ld	b,a
+SRCHUP2
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		dec	hl
+		dec	hl
+		dec	hl
+		push	hl
+		push	bc
+		ex	de,hl
+		call	BUFFCMP
+		pop	bc
+		pop	hl
+		jr	nc,SRCHUP3
+		dec	b
+		bit	6,b
+		jr	z,SRCHUP2
+		push	bc
+		call	DOPGUP
+		pop	bc
+		jr	c,SRCHUP3
+		ld	b,128+22
+		ld	hl,(VYPIS)
+		ld	de,22*2
+		add	hl,de
+		jr	SRCHUP2
+
+SRCHUP3	ld	a,b
+		and	127
+		ld	(POZICE),a
+		bit	7,b
+		jp	z,CLSTATUS
+		jp	NEXTPG
+
+
+;hledani smerem k posledni polozce
+;hloupate linearni prohledavani, vzhledem ke strukture ISO9660 asi nic
+;chytrejsiho nepujde :(
+SRCHDWN	ld	a,2*8
+		push	bc
+		call	KURZORC
+		pop	bc
+		ld	a,(POZICE)
+		ld	b,a
+SRCHDWN2	ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	a,(hl)			;konec adresare
+		inc	hl
+		or	(hl)
+		jr	z,SRCHDWN3
+		dec	hl
+		push	hl
+		push	bc
+		ex	de,hl
+		call	BUFFCMP
+		pop	bc
+		pop	hl
+		jr	z,SRCHDWN3
+		jr	c,SRCHDWN3
+		inc	b
+		ld	a,b
+		and	127
+		cp	22
+		jr	c,SRCHDWN2
+		push	bc
+		call	DOPGDW
+		pop	bc
+		jr	c,SRCHDWN3
+		ld	b,128
+		ld	hl,(VYPIS)
+		jr	SRCHDWN2
+
+SRCHDWN3	ld	a,b
+		and	127
+		ld	(POZICE),a
+		bit	7,b
+		jp	z,CLSTATUS
+		jp	NEXTPG
+
+;smazani spodniho radku
+CLSTATUS	rst	24
+		defb	22,23,128
+		rst	40
+		defw	SPACES
+		jp	VYBER
+
 ;vybran nejaky soubor
 ENTER
 ;screensaver removed
@@ -4883,19 +5176,88 @@ ENTER
 		call	GETFILE
 		ld	a,(TAPACT)
 		or	a
-		jr	z,ENTER2
+		jp	z,ENTER2
 		inc	hl
 		ld	a,l
 		or	h
 		jr	z,LEAVETAP
-		ld	(TAPCURS),de
-;		rst	40
-;		defw	NOSIFR
-;navrat do NMI menu
+		dec	hl
+;prace se soubory v tapce
+;test symbol shiftu, nema cenu volat druhou ROM
+;(nc=stisteno)
+		ld	a,127
+		in	a,(254)
+		rra
+		rra
+		jr	nc,SETCURS
+		ld	a,(hl)
+		inc	hl
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		or	a
+		jr	nz,ENOHDR
+;pro flagbyte=0 jeste test delky (hlavicka)
+		ex	de,hl
+		ld	bc,17
+		sbc	hl,bc
+		jp	z,VYBERSM
+		add	hl,bc
+		ex	de,hl
+;co s rozsirenymi bloky u TZX?
+ENOHDR	ld	a,(hl)
+		cp	$10
+		jp	nz,VYBERSM	;zatim nic
+		inc	hl			;LBA
+;obrazky
+	ifdef WITH_SCR
+		ex	de,hl
+		ld	bc,6144
+		sbc	hl,bc		;nc od or a
+		jr	nz,TAPIC2
+		ld	a,7*8
+		push	de
+		push	bc
+		rst	40
+		defw	ATRIB
+		pop	bc
+		pop	hl
+		jr	TAPICLD
+
+TAPIC2	ld	bc,6912-6144
+		or	a
+		sbc	hl,bc
+		ex	hl,de
+		jr	nz,NOTAPIC
+		ld	bc,6912
+TAPICLD	push	bc
+		push	hl
+		rst	40
+		defw	CAINIT
+		pop	hl
+		inc	hl		;preskoceni LBA
+		inc	hl
+		inc	hl
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		rst	40
+		defw	CASEEK
+		jp	SCRSPOL2
+		
+	endif	;WITH_SCR
+
+NOTAPIC
+;fixme! sem pridat obsluhu dalsich souboru
+		jp	VYBERSM
+
+;nastaveni load cursoru a navrat do NMI menu
+SETCURS	ld	(TAPCURS),de
 		ret
 
 LEAVETAP
-;v A by mela byt 0
+		xor	a
 		ld	(TAPACT),a
 ;obnov dat. struktury disku
 		rst	40
@@ -4923,9 +5285,9 @@ LVTAP2	rst	40
 		ld	(KURCOL),a
 		jp	AGAIN
 
-ENTER2
-		bit	1,(ix+25)
+ENTER2	bit	1,(ix+25)
 		jr	z,NOTDIR
+;prochazeni adresaru
 		ld	de,LBADISK
 		ld	bc,7
 		add	hl,bc
@@ -4951,18 +5313,18 @@ NOTDIR
 ;asi je to obrazek bez atributu
 		ld	a,7*8
 		push	de
+		push	bc
 		rst	40
 		defw	ATRIB
+		pop	bc
 		pop	hl
 ;v hl adresa polozky
-		ld	bc,6144
-SCRSPOL
-		push	bc
+SCRSPOL	push	bc
 		ld	de,7
 		add	hl,de
 		rst	40
 		defw	CAINIT
-		pop	bc
+SCRSPOL2	pop	bc
 		ld	de,16384
 		rst	40
 		defw	CAREAD
@@ -4970,15 +5332,12 @@ SCRSPOL
 		rst	40
 		defw	GUESBORD
 SCRWTK
-;		rst	40
-;		defw	NOSIFR
 ;pockej na stisk libovol. klav.
 		rst	40
 		defw	INKEYS		;cekme na klavesu
 		jp	NEXTPG
 
-NOTMSCR	ld	b,6912/256
-;e=0
+NOTMSCR	ld	b,6912/256	;c=0
 		or	a
 		sbc	hl,bc
 		ex	de,hl
@@ -5013,117 +5372,17 @@ ISDOT	inc	hl
 		push	de
 		ld	de,EXTTAP
 		call	TESTPRIP
+		pop	de
 		jp	nz,NENITAP
 ;obsluha tapky
-;zazalohuj aktualni pozici
-;vypisu a kurzoru
-		ld	a,(POZICE)
-		ld	(POZBAK),a
-		ld	hl,(VYPIS)
-		ld	(VYPBAK),hl
-;prenes jmeno
-		ld	hl,TAPNAME
-		push	hl
-		ld	bc,31
-		ld	a,32
-		rst	40
-		defw	FILLBYTE
-		pop	de
-		pop	hl
-		ld	c,(hl)
-		ld	b,0
-		inc	hl
-;neprenasej cislo verze souboru
-;(oddelene strednikem)
-SEMICOL	ld	a,(hl)
-		cp	';'
-		jr	z,NOSEMIC
-		ldi
-		jp	pe,SEMICOL
-NOSEMIC
-;v ix adresa cele polozky
-		ld	a,2*8
-		ld	(KURCOL),a
-;priznak: pracujem s tapkou
-		ld	(TAPACT),a
-		call	KURZOR
+		call	TAPEPREP
 
-;schovej si delku tapky 2x
-;(jednou pro sledovani konce a
-;podruhe pro vypis v NMI menu)
-		push	ix
-		pop	hl
-		ld	bc,7
-		add	hl,bc
-		push	hl
-		rst	40
-		defw	CAINIT
-		pop	hl
-		ld	bc,3
-		add	hl,bc
-		inc	bc
-		ld	de,TAPLEN2
-		push	hl
-		ldir
-		pop	hl
-		ld	c,4
-		ldir
-
-;inicalizuj buffer a index
-;(oboje se bude tvorit znovu)
-		ld	hl,BUFFER
-		ld	bc,4095
-		xor	a
-		rst	40
-		defw	FILLBYTE
-		ld	hl,INDEX
-		ld	bc,588-1
-		rst	40
-		defw	FILLBYTE
-
-		ld	ix,INDEX+2
-		ld	de,BUFFER
-;udelej misto pro ".."
-		ld	(ix+0),255
-		ld	(ix+1),255
-		inc	ix
-		inc	ix
-;load-cursor na prvni polozku
-		ld	(TAPCURS),ix
-
-MKTAPIND
-;jisti, jestli neni moc souboru
-;v indexu
-		push	ix
-		pop	hl
-		ld	bc,INDEX+588-2
-		or	a
-		sbc	hl,bc
+;vygenerovani struktury pro virtualni adresar (obsah pasky)
+;popis viz MKTZXIND
+MKTAPIND	call	MKTISPC			;test mista
 		jr	nc,TAPFAIL
-;neprelezem pres konec bufferu?
-		ex	de,hl
-		ld	bc,BUFFER+4096-18
-;fixne na hlavicku, takze telo
-;by se mozna jeste veslo, ale
-;test by byl slozitejsi
-		or	a
-		sbc	hl,bc
-		add	hl,bc
-		ex	de,hl
-		jr	nc,TAPFAIL
-
-;zjisti, jestli uz nejsme na
-;konci tapky (delka = 0)
-		ld	hl,TAPLEN
-		ld	a,(hl)
-		inc	hl
-		or	(hl)
-		inc	hl
-		or	(hl)
-		inc	hl
-		or	(hl)
-;tady s tim neco udelat
-;nejlepe vypsat
+		call	MKTILEN			;test konce souboru
+;tady s tim neco udelat - nejlepe vypsat
 		jp	z,TAPBROWS
 ;delka bloku
 		call	CARDONE
@@ -5132,27 +5391,19 @@ MKTAPIND
 		call	CARDONE
 		jr	c,TAPFAIL2
 		ld	b,a
-;test na nulovou delku bloku
-;(maji nektere tapky)
+;test na nulovou delku bloku (maji nektere tapky)
 		or	c
 ;povazuj to za uspesny konec
 		jp	z,TAPBROWS
-;odecti delku bl. od delky tap
-;(32 bitu, humus)
-		push	bc
-		ld	hl,(TAPLEN)
+;odecti delku bloku od delky tapky
+		push	de
 ;zapocitej i 2 B delky
 		inc	bc
 		inc	bc
-		or	a
-		sbc	hl,bc
-		ld	bc,0
-		ld	(TAPLEN),hl
-		ld	hl,(TAPLEN+2)
-		sbc	hl,bc
-		ld	(TAPLEN+2),hl
-		pop	bc
-
+		call	TLSUB16
+		dec	bc
+		dec	bc
+		pop	de
 ;flagbyte
 		call	CARDONE
 		jr	c,TAPFAIL2
@@ -5185,8 +5436,7 @@ MKTAPIND
 		sbc	hl,bc
 		jr	nz,TAPBODY
 ;je to hlavicka
-;precti hlavicku a crc
-;(crc ignorovano a je zahozeno)
+;precti hlavicku a crc (crc ignorovano a je zahozeno)
 		pop	bc
 ;BC=18 (pro platnou hlavicku)
 		rst	40
@@ -5196,37 +5446,18 @@ MKTAPIND
 		dec	de
 		jp	MKTAPIND
 
-;chyba tapky (chyba formatu
-;nebo pri cteni)
+;chyba tapky (chyba formatu nebo pri cteni)
 TAPFAIL2	ld	a,3*8
 		defb	33
-;chyba tapky (nevejde se)
-;nastav zluty kurzor
+;chyba tapky (nevejde se), nastav zluty kurzor
 TAPFAIL	ld	a,6*8
 		jp	BROWSTR
 
 TAPBODY
-;uchovej lba nacteneho sektoru
-;ale je to cislo dalsiho sekt.
-;takze musis snizit o 1
-		ld	c,e
-		ld	b,d
-;push de
-		ld	hl,CACHELBA
-		ld	a,(hl)
+;uchovej lba nacteneho sektoru ale je to cislo dalsiho sektoru takze musis snizit o 1
+		call	DECLBA
+		ld	(hl),$10
 		inc	hl
-		ld	d,(hl)
-		inc	hl
-		ld	e,(hl)
-		ex	de,hl
-		ld	de,1
-		or	a
-		sbc	hl,de
-		sbc	a,0
-		ex	de,hl
-		ld	l,c
-		ld	h,b
-;pop hl
 		ld	(hl),a
 		inc	hl
 		ld	(hl),d
@@ -5244,19 +5475,361 @@ TAPBODY
 		inc	hl
 		ld	(hl),d
 		inc	hl
-		ex	de,hl
+;		ex	de,hl
 		pop	bc
-		push	de
+;		push	de
+		push	hl
 		rst	40
 		defw	CASEEK
 		pop	de
 		jr	c,TAPFAIL2
 		jp	MKTAPIND
 
+;vykona potrebne kroky pro inicializovani prace s TAP nebo TZX
+TAPEPREP	push	de
+;zazalohuj aktualni pozici vypisu a kurzoru
+		ld	a,(POZICE)
+		ld	(POZBAK),a
+		ld	hl,(VYPIS)
+		ld	(VYPBAK),hl
+;prenes jmeno
+		ld	hl,TAPNAME
+		push	hl
+		ld	bc,31
+		ld	a,32
+		rst	40
+		defw	FILLBYTE
+		pop	de
+		pop	hl
+		ld	c,(hl)
+		ld	b,0
+		inc	hl
+;neprenasej cislo verze souboru (oddelene strednikem)
+SEMICOL	ld	a,(hl)
+		cp	';'
+		jr	z,NOSEMIC
+		ldi
+		jp	pe,SEMICOL
+NOSEMIC
+;v ix adresa cele polozky
+		ld	a,2*8
+		ld	(KURCOL),a
+;priznak: pracujem s tapkou
+		ld	(TAPACT),a
+		call	KURZOR
+
+;schovej si delku tapky 2x (jednou pro sledovani konce a podruhe pro vypis v NMI menu)
+		push	ix
+		pop	hl
+		ld	bc,7
+		add	hl,bc
+		push	hl
+		rst	40
+		defw	CAINIT
+		pop	hl
+		ld	bc,3
+		add	hl,bc
+		inc	bc
+		ld	de,TAPLEN2
+		push	hl
+		ldir
+		pop	hl
+		ld	c,4
+		ldir
+
+;inicalizuj buffer a index (oboje se bude tvorit znovu)
+		ld	hl,BUFFER
+		ld	bc,4095
+		xor	a
+		rst	40
+		defw	FILLBYTE
+		ld	hl,INDEX
+		ld	bc,588-1
+		rst	40
+		defw	FILLBYTE
+
+		ld	ix,INDEX+2
+		ld	de,BUFFER
+;udelej misto pro ".."
+		ld	(ix+0),255
+		ld	(ix+1),255
+		inc	ix
+		inc	ix
+;load-cursor na prvni polozku
+		ld	(TAPCURS),ix
+		ret
+
+;zjisti, jestli neni moc souboru v indexu a bufferu
+;nc - dalsi polozka se uz nevejde
+MKTISPC	push	ix
+		pop	hl
+		ld	bc,INDEX+588-2
+		or	a
+		sbc	hl,bc
+		ret	nc
+;neprelezem pres konec bufferu?
+		ex	de,hl
+		ld	bc,BUFFER+4096-18
+;fixne na hlavicku, takze telo by se mozna jeste veslo, ale test by byl slozitejsi
+		or	a
+		sbc	hl,bc
+		add	hl,bc
+		ex	de,hl
+		ret
+
+;zjisti, jestli uz nejsme na konci tapky (delka = 0)
+;z-delka uz je 0
+MKTILEN	ld	hl,TAPLEN
+		ld	a,(hl)
+		inc	hl
+		or	(hl)
+		inc	hl
+		or	(hl)
+		inc	hl
+		or	(hl)
+		ret
+
+;odecte od delky tapky/tzx BC bajtu
+TLSUB16	ld	de,0
+;odecte od delky tapky/tzx DEBC bajtu
+TLSUB	ld	hl,(TAPLEN)
+		or	a
+		sbc	hl,bc
+		ld	(TAPLEN),hl
+		ld	hl,(TAPLEN+2)
+		sbc	hl,de
+		ld	(TAPLEN+2),hl
+		ret
+
+;vrati v ADE LBA aktualniho sektoru (ukazatel uz je na dalsim, proto -1)
+;vstup DE vraci jako HL!!!
+DECLBA	push	de
+		ld	hl,CACHELBA
+		ld	a,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	e,(hl)
+		ex	de,hl
+		ld	de,1
+		or	a
+		sbc	hl,de
+		sbc	a,0
+		pop	de
+		ex	de,hl
+		ret
 
 NENITAP
-;vyzvedni cele jmeno (k nicemu)
+		push	de
+		ld	de,EXTTZX
+		call	TESTPRIP
 		pop	de
+		jp	nz,NENITZX
+;obsluha tzx
+		call	TAPEPREP
+;test "magic" sekvence, je az tady, protoze v TAPEPREP je inicializace
+;ale pokud magic nesedi, musi se to vsechno vratit :(
+		ld	bc,10			;verze (9-10) nas nezajima
+;		ld	de,BUFFER			;nastaveno z TAPEPREP
+		push	de
+		rst	40
+		defw	CAREAD
+		pop	de
+		jp	c,TAPFAIL2
+		ld	b,8
+		ld	hl,TZXMAGIC
+		call	STRNCMP
+		jp	nz,TAPFAIL2
+;je treba odecist z delky tapky 10B "magic"
+		ld	bc,10
+		call	TLSUB16
+		ld	de,BUFFER			;lepsi nez porad pushovat
+		ld	a,4*8			;"all ok"
+		ld	(KURCOL),a
+
+;0. flagbyte, 0=hlavicka, 1-255=blok dat
+;1-2. delka bloku
+;kdyz hlavicka tak nasleduje 17 bajtu hlavicky
+;kdyz blok dat tak (obvykle)
+;3. typ dat, $10 std. blok, viz. TZX
+;4-6. LBA pocatecniho sektoru
+;7-8. pozice v sektoru (posun od zacatku)
+
+MKTZXIND	call	MKTISPC			;test mista
+		jp	nc,TAPFAIL
+		call	MKTILEN			;test konce souboru
+;tady s tim neco udelat - nejlepe vypsat
+		jp	z,TPBRSNC
+;id bloku
+		call	CARDONE
+		jp	c,TAPFAIL2
+		bit	7,a
+		jr	z,MKTZXI2
+		xor	a
+MKTZXI2	ld	(TZXBLKID),a
+		ld	(TZXBPOS),de
+		ld	l,a
+		ld	h,0
+		ld	e,l
+		ld	d,h
+		ld	b,h				;B=0
+		add	hl,hl			;x3
+		add	hl,de
+		ld	de,TZXLENS
+		add	hl,de
+		ld	a,(hl)
+		inc	hl
+		or	a
+		ld	c,a
+		jr	nz,TZXDTBLK
+		ld	a,(hl)
+		inc	c				;BC=1
+		call	TLSUB16			;pro odecteni delky ID bloku
+		dec	c
+;po navratu je DE=0, to potrebujem, ted DEBC=0
+;pokracuj spolecnou casti, lseek by mel nulovou delku ustat
+		jr	TZXFINLEN
+
+TZXDTBLK	push	hl
+;telo bloku (tzx hlavicka), v BC jeji delka + 1 na id bloku
+		inc	bc
+		call	TLSUB16
+		dec	bc
+		ld	de,TZXBUFF
+		rst	40
+		defw	CAREAD
+		pop	hl
+		jp	c,TAPFAIL2
+		ld	a,(hl)
+		push	af
+		inc	hl
+		ld	l,(hl)
+		ld	h,TZXBUFF/256
+		ld	c,0
+		ld	b,c
+		ld	e,c
+		ld	d,c
+		and	%00001111
+		jr	z,TZXGOTLEN
+		ld	c,(hl)
+		dec	a
+		jr	z,TZXGOTLEN
+		inc	hl
+		ld	b,(hl)
+		dec	a
+		jr	z,TZXGOTLEN
+		inc	hl
+		ld	e,(hl)
+		dec	a
+		jr	z,TZXGOTLEN
+		inc	hl
+		ld	d,(hl)
+TZXGOTLEN	pop	af
+;nasobeni
+		bit	7,a
+		jr	z,TZXFINLEN
+;dvema
+		push	bc
+		pop	iy
+		ld	l,e
+		ld	h,d
+		add	iy,bc
+		adc	hl,de
+		bit	6,a
+		jr	z,TZXMVLEN
+;tremi (musi projit i casti 'dvema')
+		add	iy,bc
+		adc	hl,de
+TZXMVLEN	ld	e,l
+		ld	d,h
+		push	iy
+		pop	bc
+TZXFINLEN	bit	5,a
+		jr	z,TZXSTOR
+		ld	a,3*8
+		ld	(KURCOL),a
+TZXSTOR	call	TLSUB
+		ld	a,(TZXBLKID)
+		ld	hl,(TZXBPOS)
+		ld	(ix+0),l
+		ld	(ix+1),h
+		inc	ix
+		inc	ix
+;pokud se jedna o standardni blok je treba ho prohledat a nacist pripadnou hlavicku
+		cp	$10
+		jr	nz,TZXSTOR2
+;fixme - spojit s MKTAPIND
+;flagbyte
+		call	CARDONE
+		jp	c,TAPFAIL2
+		dec	bc				;flag
+		dec	bc				;crc
+		ld	(hl),a
+		inc	hl
+		ld	(hl),c
+		inc	hl
+		ld	(hl),b
+		inc	hl
+		inc	bc				;pro seek/read
+;podle flagu hlav/telo
+		or	a
+		ld	a,$10
+		jr	nz,TZXBODY2
+		push	hl
+		ld	hl,18			;BC je o 1 vetsi
+		sbc	hl,bc			;NC snad od or a
+		pop	hl
+		jr	nz,TZXBODY2
+		ex	de,hl
+		rst	40
+		defw	CAREAD
+		jp	c,TAPFAIL2
+;zahod crc bloku
+		dec	de
+		jp	MKTZXIND
+
+TZXSTOR2	ld	(hl),255			;body
+TZXBODY	inc	hl
+		ld	(hl),c			;z delky pouze nizsich 16b
+		inc	hl
+		ld	(hl),b
+		inc	hl
+TZXBODY2	ld	(hl),a
+		inc	hl
+		push	de
+		push	bc
+		ex	de,hl
+		call	DECLBA
+;LBA sektrou (fixme - spojit s MKTAPIND)
+		ld	(hl),a
+		inc	hl
+		ld	(hl),d
+		inc	hl
+		ld	(hl),e
+		inc	hl
+		ex	de,hl
+;a pozici v sektoru
+		ld	hl,(CACHEKUR)
+		ld	bc,CACHE
+		or	a
+		sbc	hl,bc
+		ex	de,hl
+		ld	(hl),e
+		inc	hl
+		ld	(hl),d
+		inc	hl
+;FIXME - tady pridat ulozeni dalsich dat z hlavicky pro ID 35 (custom info)
+		pop	bc
+		pop	de
+		push	hl
+		rst	40
+		defw	CALSEEK
+		pop	de
+		jp	c,TAPFAIL2
+		jp	MKTZXIND
+
+
+NENITZX
 	ifdef WITH_POK
 		ld	de,EXTPOK
 		call	TESTPRIP
@@ -5269,7 +5842,6 @@ NENITAP
 		ex	de,hl			;lba souboru do de
 ;jeden 2048B sektor do CACHE
 		ld	hl,CACHE
-;		ld	hl,65536-2048
 		push	hl
 		rst	40
 		defw	READ1SEC
@@ -5341,27 +5913,17 @@ PKLNDTA	dec	de
 		ld	a,c
 		or	64+16
 		ld	(de),a
-;		bit	3,a
-;		jr	nz,PKLNDTA2
-;		out	(253),a			;128k page
-PKLNDTA2	inc	de
+		inc	de
 		call	ATOI				;address
 		ex	de,hl
 		ld	(hl),c
 		inc	hl
 		ld	(hl),b
 		inc	hl
-;		ld	a,(bc)			;zjisti puvodni data v pameti
-;		push	af
 		ex	de,hl
 		call	ATOI				;value + ask
 		ld	(iy+0),b			;bud 0 nebo 1 (ask)
 		ex	de,hl
-;		pop	af
-;		bit	0,b
-;		jr	nz,PKLNDTA3
-;		ld	a,c
-;PKLNDTA3	ld	(hl),a
 		ld	(hl),c
 		inc	hl
 		ex	de,hl
@@ -5519,27 +6081,27 @@ PKENDLST2	ld	a,(hl)
 		call	KURZORA
 POKESM	push	hl
 		rst	40
-		defw	INKEYS
+		defw	INKEYSRAW
 		pop	hl
 		cp	'7'
 		jr	z,POKEUP
-		cp	11
-		jr	z,POKEUP
+;		cp	11
+;		jr	z,POKEUP
 		cp	'6'
 		jr	z,POKEDOWN
-		cp	10
-		jr	z,POKEDOWN
+;		cp	10
+;		jr	z,POKEDOWN
 		cp	'5'
 		jr	z,POKEPGUP
-		cp	8
-		jr	z,POKEPGUP
+;		cp	8
+;		jr	z,POKEPGUP
 		cp	'8'
 		jr	z,POKEPGDW
-		cp	9
-		jr	z,POKEPGDW
+;		cp	9
+;		jr	z,POKEPGDW
 		cp	13
 		jr	z,POKEENT
-		or	32				;mala pismena
+;		or	32				;mala pismena
 		cp	'a'
 		jp	z,POKADD
 		cp	'd'
@@ -5554,15 +6116,11 @@ POKEUP	ld	a,(hl)
 		or	a
 		jr	z,POKESM
 		dec	(hl)
-;		rst	40
-;		defw	NOSIFR
 		jr	PKENDLST2
 
 POKEDOWN	call	FINDPEND
 		jr	z,POKESM
 		inc	(hl)
-;		rst	40
-;		defw	NOSIFR
 		jr	PKENDLST2
 
 POKEPGUP	ld	(hl),0
@@ -5614,8 +6172,6 @@ POKEENT4	ld	(hl),a
 		ld	h,0
 		rst	40
 		defw	STOR8DC
-;		ld	a,(POKCUR)
-;		ld	iyu,a
 		ld	iyl,28
 POKEENT7	ld	hl,0
 POKEENT5	rst	40
@@ -6655,8 +7211,6 @@ IS48KMODE	ld	a,(ACTPAGE)
 		defb	"Can't load 128K snap in 48K mode"
 		defb	19,0,18,128
 		ei
-;		rst	40
-;		defw	NOSIFR
 		rst	40
 		defw	INKEYS		;cekme na klavesu
 		jp	NEXTPG
@@ -6666,7 +7220,7 @@ IS48KMODE	ld	a,(ACTPAGE)
 
 ;nakresli kurzor (browser)
 KURZOR	ld	a,(KURCOL)
-		ex	af,af'
+KURZORC	ex	af,af'
 		ld	a,(POZICE)
 KURZORA	push	hl
 		push	de
@@ -6702,16 +7256,40 @@ KURZOR2	ld	(hl),a
 TESTPRIP	push	hl
 		ex	de,hl
 		ld	b,3
-		call	STRNCMP
+		call	STRNICMP
 		pop	hl
 		ret
 
 ;porovna 2 retezce (DE a HL) v delce B bytu
 ;znaky z DE jsou prevedeny na mala pismena
-;navrat NZ-nerovnaji se
-;Z-rovnaji se
-STRNCMP	ld	a,(de)
+;navrat Z-rovnaji se
+;C-(HL) je "vetsi" nez (DE)
+STRNICMP	ld	a,(de)
 		or	32
+		cp	(hl)
+		ret	nz
+		inc	hl
+		inc	de
+		djnz	STRNICMP
+		ret
+
+BUFFCMP	ld	de,INPBUFF
+NAMECMP	ld	a,c
+		ld	bc,32
+		add	hl,bc
+;porovnani delek, kdyz je jmeno kratsi, nema cenu dal hledat
+		cp	(hl)
+		ret	nc
+		inc	a			;delka v bufferu je o 1 mensi
+		ld	b,a
+		inc	hl
+;		jr	STRNCMP
+;sem nic nepridavat
+
+;porovna 2 retezce (DE a HL) v delce B bytu
+;navrat Z-rovnaji se
+;C-(HL) je "vetsi" nez (DE)
+STRNCMP	ld	a,(de)
 		cp	(hl)
 		ret	nz
 		inc	hl
@@ -6721,6 +7299,7 @@ STRNCMP	ld	a,(de)
 
 
 EXTTAP	defb	"tap"
+EXTTZX	defb	"tzx"
 	ifdef WITH_SNA
 EXTSNA	defb	"sna"
 	endif
@@ -6740,6 +7319,146 @@ EXTPOK	defb	"pok"
 ;EXTTRD	defb	"trd"
 ;	endif
 
+
+TZXMAGIC	defb	"ZXTape!",$1A
+
+;tabulka delek pro jednotlive .TZX bloky
+;pouze pro hodnoty 0-127!
+;0. pocet bajtu "hlavicky"
+;1. spodni 4 bity pocet bajtu delky
+;+128 - nasobit dvema (pricist 1x)
+;+64 - nasobit tremi (pricist 1x, tj. musi byt i +128)
+;+32 - pritomnost bloku nejspis zpusobi nefunkcnost tzx
+;2. startovni byte delky (i pro 1.=0!)
+TZXLENS
+;nezname jako "extension rules"
+		defb	16 dup (4,4,0)
+;ID $10 - Standard Speed Data Block
+		defb	4,2,2
+;ID $11 - Turbo Loading Data Block
+		defb	$12,3+32,$F
+;ID $12 - Pure Tone
+		defb	4,0+32,0
+;ID $13 - Sequence of Pulses of Different Lengths
+		defb	1,1+128+32,0
+;ID $14 - Pure Data Block
+		defb	$A,3+32,7
+;ID $15 - Direct Recording
+		defb	8,3+32,5
+;ID $16 - C64 ROM Type Data Block
+		defb	4,4,0
+;ID $17 - C64 Turbo Tape Data Block
+		defb	4,4,0
+		defb	8 dup (4,4,0)
+;ID $20 - Pause (Silence) or 'Stop the Tape' Command
+		defb	2,0,0
+;ID $21 - Group Start
+		defb	1,1+32,0
+;ID $22 - Group End
+		defb	0,0+32,0
+;ID $23 - Jump To Block
+		defb	2,0+32,0
+;ID $24 - Loop Start
+		defb	2,0+32,0
+;ID $25 - Loop End
+		defb	0,0+32,0
+;ID $26 - Call Sequence
+		defb	2,2+128+32,0
+;ID $27 - Return From Sequence
+		defb	0,0+32,0
+;ID $28 - Select Block
+		defb	2,2+32,0
+		defb	1 dup (4,4,0)
+;ID $2A - Stop Tape if in 48K Mode
+		defb	4,4,0
+		defb	5 dup (4,4,0)
+;ID $30 - Text Description
+		defb	1,1,0
+;ID $31 - Message Block
+		defb	2,1,1
+;ID $32 - Archive Info
+		defb	2,2,0
+;ID $33 - Hardware Type
+		defb	1,1+128+64,0
+;ID $34 - Emulation Info
+		defb	8,0,0
+;ID $35 - Custom Info Block
+		defb	$14,4,$10
+		defb	10 dup (4,4,0)
+;ID $40 - Snapshot Block
+		defb	4,3+32,1
+		defb	25 dup (4,4,0)
+;ID $5A - (90 dec, ASCII Letter 'Z')
+		defb	9,0,0
+		defb	36 dup (4,4,0)
+
+	ifdef WITH_MTF
+;popisy TZX bloku
+
+TZXTID00	defb	"Unknown bloc",'k'+128
+;TZXTID10	defb	"Standard Speed Data Bloc",'k'+128
+TZXTID11	defb	"Turbo Loading Data Bloc",'k'+128
+TZXTID12	defb	"Pure Ton",'e'+128
+TZXTID13	defb	"Sequence of Pulse",'s'+128
+TZXTID14	defb	"Pure Data Bloc",'k'+128
+TZXTID15	defb	"Direct Recordin",'g'+128
+TZXTID16	defb	"C64 ROM Type Data Bloc",'k'+128
+TZXTID17	defb	"C64 Turbo Tape Data Bloc",'k'+128
+TZXTID20	defb	"Pause or 'Stop the Tape",39+128
+TZXTID21	defb	"Group Star",'t'+128
+TZXTID22	defb	"Group En",'d'+128
+TZXTID23	defb	"Jump To Bloc",'k'+128
+TZXTID24	defb	"Loop Star",'t'+128
+TZXTID25	defb	"Loop En",'d'+128
+TZXTID26	defb	"Call Sequenc",'e'+128
+TZXTID27	defb	"Return From Sequenc",'e'+128
+TZXTID28	defb	"Select Bloc",'k'+128
+TZXTID2A	defb	"Stop Tape if in 48K Mod",'e'+128
+TZXTID30	defb	"Text Descriptio",'n'+128
+TZXTID31	defb	"Message Bloc",'k'+128
+TZXTID32	defb	"Archive Inf",'o'+128
+TZXTID33	defb	"Hardware Typ",'e'+128
+TZXTID34	defb	"Emulation Inf",'o'+128
+TZXTID35	defb	"Custom Info Bloc",'k'+128
+TZXTID40	defb	"Snapshot Bloc",'k'+128
+TZXTID5A	defb	"'Join Marker",39+128
+
+;tabulka textu TZX bloku
+TZXTEXTS	defw	16 dup (TZXTID00)
+		defw	TZXTID00				;std.blok se rovnou pouzije 
+		defw	TZXTID11
+		defw	TZXTID12
+		defw	TZXTID13
+		defw	TZXTID14
+		defw	TZXTID15
+		defw	TZXTID16
+		defw	TZXTID17
+		defw	8 dup (TZXTID00)
+		defw	TZXTID20
+		defw	TZXTID21
+		defw	TZXTID22
+		defw	TZXTID23
+		defw	TZXTID24
+		defw	TZXTID25
+		defw	TZXTID26
+		defw	TZXTID27
+		defw	TZXTID28
+		defw	1 dup (TZXTID00)
+		defw	TZXTID2A
+		defw	5 dup (TZXTID00)
+		defw	TZXTID30
+		defw	TZXTID31
+		defw	TZXTID32
+		defw	TZXTID33
+		defw	TZXTID34
+		defw	TZXTID35
+		defw	10 dup (TZXTID00)
+		defw	TZXTID40
+		defw	25 dup (TZXTID00)
+		defw	TZXTID5A
+		defw	36 dup (TZXTID00)
+
+	endif ;WITH_MTF
 
 ROMEND1
 

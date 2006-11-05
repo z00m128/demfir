@@ -1,0 +1,67 @@
+; DEMFIR PC BootDisc
+
+
+		CPU	Z80UNDOC
+		RELAXED	ON
+
+		org	0
+
+		defb	$EB,$3C,$90		;jmp short 0x3e
+		defb	"ZXDEMFIR"		;system name
+		defb	$00,$02,$01,$01	;disk geometry etc.
+		defb	$00,$02,$E0,$00
+		defb	$40,$0B,$F0,$09
+		defb	$00,$12,$00,$02
+
+		org	$3e
+
+		defb	$0E				;push cs
+		defb	$1F				;pop ds
+		defb	$33,$C0			;xor ax,ax
+		defb	$FA				;cli
+		defb	$8E,$D0			;mov ss,ax
+		defb	$BC,$00,$7C		;mov sp,0x7c00
+		defb	$FB				;sti
+		defb	$BE,$76,$7C		;mov si,0x7c76
+		defb	$FC				;cld
+		defb	$AC				;lodsb
+		defb	$84,$C0			;test al,al
+		defb	$74,$08			;jz 0x5a
+		defb	$B4,$0E			;mov ah,0xe
+		defb	$B3,$07			;mov bl,0x7
+		defb	$CD,$10			;int 0x10
+		defb	$EB,$F3			;jmp short 0x4d
+		defb	$B4,$00			;mov ah,0x0
+		defb	$CD,$16			;int 0x16
+		defb	$CD,$19			;int 0x19
+
+		org	$76
+
+		defb	13,10
+		defb	"It seems that you accidentaly put bootable CD"
+		defb	13,10
+		defb	"for ZX Spectrum into your PC drive and now"
+		defb	13,10
+		defb	"you are trying to boot it. Are you really so lame?"
+		defb	13,10
+		defb	13,10
+		defb	"Don't be lame, be SPECCYFIC!"
+		defb	13,10
+		defb	13,10
+		defb	"Turn off this stupid piece of hardware,"
+		defb	13,10
+		defb	"insert this disc into your ZX Spectrum CDROM drive"
+		defb	13,10
+		defb	"and try DEMFIR from http://demfir.sourceforge.net/"
+		defb	13,10
+		defb	0
+
+		org	$1FE
+		defb	$55,$AA
+
+		org	2048
+		binclude	"demfir_R.bin"
+	
+
+; nastaveni pro VI (tabulatory 5 znaku a filetype)
+; vim:set ts=5 ft=z8asl:

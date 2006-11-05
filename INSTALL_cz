@@ -43,18 +43,34 @@ pøiná¹í dvì "nepøíjemnosti":
 2) Po ka¾dém zapnutí ZXS je tøeba "nabootovat" druhou èást a dokud se tak
    nestane, nejde pou¾ívat tape emulátor, cd browser a jeho souèásti (spou¹tìní
    snapù). Bootování probíhá z prvního naèteného ISO image, který obsahuje
-   druhou èást (demfirXXXX_R.bin) jako "generic boot image", tj. umístìný od
-   poèátku ISO image. Toto umí pokud vím udìlat pouze mkisofs s parametrem -G.
-   Zatím není mo¾no bootovat podle "El-Torio normy" kterou podporují grafické
-   nástroje pro vytváøení CD (K3b, Nero). Dodávaný nebo vygenerovaný (pøes
-   make) ISO image (demfirXXXX.iso) je vytvoøen jako bootovací a je tedy mo¾né
-   ho pro tuto èinnost pou¾ít. Dokud není nabootováno, verze DEMFIRu v NMI menu
-   je vypsána èervenì, po nabootování zelenì. Je také kontrolována verze obou
-   èástí a pokud nesedí, boot není úspì¹ný. Na to pozor pøi "upgrade" DEMFIRu
-   DEMFIRem (zpùsob 3). Je tøeba mít rùzná média, zaøízení nebo dva image za
-   sebou (první s nainstalovanou verzí z kterého se nabootuje a druhý z kterého
-   se provede upgrade).
+   druhou èást jako "generic boot image" (tj. demfirXXXX_R.bin umístìný od
+   poèátku ISO image) nebo demfirboot.img pou¾itý v El Torito (standardní
+   bootovatelné CD). Dodávaný nebo vygenerovaný (pøes make) ISO image
+   (demfirXXXX.iso) je vytvoøen jako bootovací a je tedy mo¾né ho pro tuto
+   èinnost pou¾ít. Dokud není nabootováno, verze DEMFIRu v NMI menu je vypsána
+   èervenì, po nabootování zelenì. Je také kontrolována verze obou èástí a pokud
+   nesedí, boot není úspì¹ný. Na to pozor pøi "upgrade" DEMFIRu DEMFIRem (zpùsob
+   3). Je tøeba mít rùzná média, zaøízení nebo dva image za sebou (první s
+   nainstalovanou verzí z kterého se nabootuje a druhý z kterého se provede
+   upgrade).
 
 
 Stiskem NMI proveïte detekci zaøízení, nechte vyhledat bootovací image (pokud
 není od zaèátku média) a mù¾ete zaèít pracovat.
+
+
+
+Jak vytvoøit vlastní bootovatelná CD:
+
+1) V K3b, Nero nebo podobném "u¾ivatelsky pøítulném" programu pou¾ijte
+   soubor demfirboot.img jako disketový obraz pøi tvorbì standardního
+   bootovatelného CD (soubor demfirboot.img je vygenerován pøi 'make eltorito'
+   nebo 'make demfirboot.img', oficiální vydání by ho mìlo obsahovat).
+
+2) Pøi pou¾ití mkisofs jsou dvì mo¾nosti
+   a) "generic boot image" - rychlej¹í a ménì prostorovì nároèná varianta:
+      mkisofs -U -V "JMENO_CD" -G demfirXXXX_R.bin -o image.iso SOUBORY_NA_CD
+   b) El Torito jako ve variantì 1:
+      mkisofs -U -V "JMENO_CD" -b demfirboot.img -hide demfirboot.img -hide boot.catalog -o image.iso demfirboot.img SOUBORY_NA_CD
+   Význam jednotlivých voleb si najdìte v popisu mkisofs, je to tam pìknì
+   popsané :).

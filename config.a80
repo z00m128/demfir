@@ -25,6 +25,10 @@ WITH_SCR
 ; prelozit s prohlizecem textovych souboru
 ;WITH_TXT			; not working / nefunguje
 
+; build with more .tzx features
+; prelozit s rozsirenou podporou .tzx
+WITH_MTF
+
 ; build with PokeManager
 ; prelozit se "spravcem pouku"
 WITH_POK

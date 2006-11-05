@@ -1,3 +1,15 @@
+2006-11-05
+
+    * Release of version d0.7a (PhaCon 2006)
+
+    * New:
+    - boots from El Torito (boot from "generic boot image" still works)
+    - user can search filenames in browser by typing letters
+    - some DEMFIR functions (only image viewer for now) can be used on TAP files's
+      bodys by pressing ENTER on it, load cursor can be set with ENTER+SS
+    - partial TZX support (see README)
+
+
 2005-11-05
 
     * Release of version d0.6a (Reborn on birthday)

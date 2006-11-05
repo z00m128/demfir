@@ -1,3 +1,15 @@
+2006-11-05
+
+    * Release verze d0.7a (PhaCon 2006)
+
+    * Nové:
+    - boot z El Torito (boot z "generic boot image" funguje také)
+    - v browseru lze hledat soubory podle jména stiskem pøíslu¹ných znakù
+    - na "tìlíèka" TAPek lze pou¾ít nìkteré funkce DEMFIRu (zatím pouze prohlí¾ení
+      obrázkù) ENTERem, load kurzor se nastavuje pres ENTER+SS
+    - èásteèná podpora TZX (viz. README_cz)
+
+
 2005-11-05
 
     * Release verze d0.6a (Znovuzrození na narozeniny)

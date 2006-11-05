@@ -1,8 +1,9 @@
 - bugfixy
 - text view na libovolný soubor
-- v browseru umo¾nit hledání podle jména (stiskem pøíslu¹ných znakù)
 - "polykaè hvìzdièek"
-- "pseudo" save?
 - podpora pro Pentagon a Timex
-- bootovat z El-Torio
 - zeptat se zda nechat zapnutý cheat pøed jeho smazáním (PokeManager)
+- TRDOS wrapper
+- pøepis souborù ("save") pro tap a nekomprimované z80
+- "správce úloh"
+- akce na "nepáskové" bloky v TZX

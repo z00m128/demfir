@@ -1,8 +1,9 @@
 - bugfixes
 - text view on any file
-- search filenames in browser by typing letters
 - "star eater"
-- any kind of save?
 - Pentagon and Timex support
-- boot from El-Torio
 - ask user to keep on cheat before cheat clean (PokeManager)
+- TRDOS wrapper
+- file overwrite ("save") for tap and not compressed z80
+- "task manager"
+- actions for "nontape" blocks in TZX

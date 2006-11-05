@@ -14,6 +14,7 @@ Fièury:
   naèítáním média, ale ka¾dá sranda nìco stojí, tak ho nenahrávejte moc
   "daleko", jinak se vá¾nì naèekáte.
 - Mo¾nost procházet celý strom adresáøù a souborù (integrovaný browser).
+- Hledání souborù v adresáøi podle jména
 - V¹e se pamatuje (naètený adresáø, pozice v nìm, data o TAPce atd.).
 - Detekce typu souborù; obrázky podle délky, emulátorové soubory podle pøípony.
 - Prohlí¾ení barevných (6912 B) a èernobílých (6144 B) obrázkù s detekcí barvy
@@ -26,6 +27,9 @@ Fièury:
   mo¾no nastavit load kurzor. Pokud program ète data pomocí ROM, jsou pøi
   vybrané TAPce ètena z IDE zaøízení, pokud ¾ádná TAPka vybraná není, ète se
   pøímo z MGF (pomocí standardních rutin ROM).
+- Tape emulátor pro TZX soubory, viz. TAP. Brány v úvahu jsou pouze bloky
+  s ID=10h. Ostatní jsou zobrazeny v browseru, ale pøi ètení z pásky jsou
+  pøeskoèeny.
 - Ètení POK souborù a snadné zapínání a vypínání jednotlivých cheatù (cheat je
   skupina POKE aplikovaných naráz).
 - Modulární struktura - nìkteré èásti je pøi kompilaci mo¾no vypnout a udìlat
@@ -84,9 +88,18 @@ Ovládání browseru:
 ¹ipka vpravo - skok na konec stránky, pokud je ji¾ kurzor na poslední polo¾ce,
                skok na následující stránku
 Enter        - akce = zobrazení obrázku (èeká na klávesu), spu¹tìní snapu,
-               procházení TAPky èi adresáøe nebo nastavení load kurzoru (zále¾í
-               na okolnostech)
+               procházení TAPky èi adresáøe (zále¾í na okolnostech)
+Enter+SS     - pøi aktivní TAPce nastaví load kurzor
 Mezerník     - ukonèení browseru
+Ostatní klávesy jsou pou¾ity pro hledaní souboru dle jména. Hledá se podle
+ASCII s ohledem na velikost písmen - case sensitive (vzhledem k organizaci
+iso9660 nelze jinak). Na zaèátek adresáøe se dostanete hledáním teèky, na konec
+"rourou" (SS+S). Speccyální znaky (napø. èísla pod kurzory) lze zadat pøes
+"mrtvou klávesu" TRUE VIDEO (CS+3), jejím stiskem se zmìní border na modrý a
+dal¹í klávesa se pou¾ije pøímo na hledání, nikoliv v jejim pùvodním významu.
+Je nalezen první odpovídající soubor ve smìru hledání, pokud není nalezena
+pøesná shoda, kurzor se posune na nejbli¾¹í následující.
+Hledání je ukonèeno speccyální klávesou (napø. pohybem kurzoru).
 
 Ovládání inputu:
 CS+1 (EDIT)  - ukonèí vstup bez ulo¾ení hodnoty
@@ -107,10 +120,12 @@ konec.
 
 Pøi práci v TAPce je kurzor buï zelený (v¹e ok), èervený (TAPka obsahuje
 nìjakou chybu) nebo ¾lutý (TAPka je OK, ale obsahuje moc souborù a nebyl
-poøízen jejich seznam => není mo¾né s nimi pracovat).
+poøízen jejich seznam => není mo¾né s nimi pracovat). Pøi práci s TZX je to
+stejné, navíc pøibyl je¹tì purpurový kurzor znaèící pøítomnost bloku, který
+pravdìpodobnì zpùsobí nefunkènost celého TZX souboru.
 
-Pokud pøi LOADu z TAPky dojede kurzor na její konec, je TAPka automaticky
-"pøevinuta" na zaèátek. Pozici load kurzoru lze kdykoliv zjistit/zmìnit pøes
+Pokud pøi LOADu z TAP/TZX dojede kurzor konec souboru, je TAP/TZX automaticky
+"pøevinut" na zaèátek. Pozici load kurzoru lze kdykoliv zjistit/zmìnit pøes
 browser.
 
 V NMI menu je v úplnì prvním øádku zobrazeno (zleva doprava):
@@ -131,6 +146,8 @@ Ve tøetím øádku jsou ostatní moduly a nastavení
 - WDC = automatické nastavování geometrie pøi detekci zaøízení, vy¾adují
         nìkteré disky Western Caviar, povoluje WITH_WDC v config.a80
 - +3R = stránkuje ROM +2A/+3 na portu 8189, povoluje ROM_2A_3 v config.a80
+- MTF = podpora pro nìkteré TZX bloky, které obsahují dal¹í data nepotøebná pro
+        emulaci pásky, povoluje WITH_MTF v config.a80
 
 Logo lze zmìnit pomocí USELOGO (rozsah 0-3, viz. config.a80).
 Komu se nezdá originální zx font, povolením BOLD_FONT v config.a80 si mù¾e

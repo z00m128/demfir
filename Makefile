@@ -1,5 +1,6 @@
 SOURCE=demfir.a80
-INCLUDES=config.a80 basic.tpi logo.pck logof6.pck logof6_2.pck spectrum.font didaktik.font
+BOOT=demfirboot
+INCLUDES=config.a80 $(BOOT).a80 basic.tpi logo.pck logof6.pck logof6_2.pck spectrum.font didaktik.font
 VERSION_LONG=$(shell grep "^DVERS" $(SOURCE)|cut -d \" -f 2)
 VERSION=$(shell echo $(VERSION_LONG)|tr -d .)
 BASE=$(SOURCE:%.a80=%$(VERSION))
@@ -13,8 +14,18 @@ DEST=../..
 
 all: $(BASE).iso
 
+eltorito: $(BOOT).img
+	mkisofs -U -V "DEMFIR $(VERSION_LONG) INSTALL" -b $(BOOT).img -c boot.catalog -hide $(BOOT).img -hide boot.catalog -o $(BASE).iso $(BOOT).img $(FILES)
+
 $(BASE).iso: $(FILES)
 	mkisofs -U -V "DEMFIR $(VERSION_LONG) INSTALL" -G $(IMAGE1) -o $(BASE).iso $(FILES)
+
+$(BOOT).img: $(FILES) $(BOOT).a80 Makefile
+	ln -sf $(IMAGE1) demfir_R.bin
+	asl $(BOOT).a80 -o $(BOOT).p -L -u
+	@echo
+	p2bin $(BOOT).p $(BOOT).img -r 0-1474559 -l 0
+#	p2bin $(BOOT).p $(BOOT).img -r 0-511 -l 0
 
 $(COMPILE): $(SOURCE) $(INCLUDES) Makefile
 	asl $(SOURCE) -o $(BASE).p -L -u
@@ -27,18 +38,19 @@ $(COMPILE): $(SOURCE) $(INCLUDES) Makefile
 	@echo
 	cat basic.tpi $(BASE).pat > $(COMPILE)
 	@echo
-	echo '.cvsignore *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1' >.cvsignore
+	echo '.cvsignore *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 $(BOOT).img' >.cvsignore
 	@echo
 
 clean:
-	rm -f *.bin demfir*.tap *.p *.err *.lst *.pat *.iso .cvsignore part1
+	rm -f *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 .cvsignore $(BOOT).img
 
-distrib: $(BASE).iso
+distrib: $(BASE).iso $(BOOT).img
 	rm -rf $(DEST)/$(DISTR_DIR)
 	mkdir $(DEST)/$(DISTR_DIR)
-	cp $(DOCS) $(SOURCE) $(INCLUDES) $(BASE).iso $(FILES) $(DEST)/$(DISTR_DIR)
+	cp $(DOCS) $(SOURCE) $(INCLUDES) $(BOOT).img $(FILES) $(BASE).iso $(DEST)/$(DISTR_DIR)
 	cd $(DEST); tar zcvf $(DISTR_DIR).tar.gz $(DISTR_DIR)
 
 run: $(BASE).iso
 	ln -sf $(BASE).iso part1
+#	xspect -divide-image $(IMAGE0) ./ -quick-load devast_ide.tap
 	xspect -divide-image $(IMAGE0) ./
