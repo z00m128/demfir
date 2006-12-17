@@ -31,8 +31,8 @@
 
 		include "config.a80"
 
-DVERS	equ	"d0.7a"
-;DVERS	equ	"61026"
+DVERS	equ	"d0.7b"
+;DVERS	equ	"61104"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -81,8 +81,7 @@ ANY_SNAP
 
 ;pocet "petivterin", po kolika se se nahodi pripadny screensaver
 ;(skutecne jednotky jsou 256 preruseni)
-;screensaver removed
-;SSAVER	equ	120/5
+SSAVER	equ	120/5
 
 ;konstanty opakovani klaves
 CON_REP	equ	6
@@ -92,11 +91,8 @@ CON_DEL	equ	36
 CLICKLEN	equ	0
 
 ;timeouty pro ide device
-;	ifdef TOUT_LONG
 IDETOUT	equ	0
-;	else
 IDETOUTS	equ	$3000
-;	endif
 
 ;konec RAM divIDE
 DRAMTOP	equ	16384
@@ -111,6 +107,8 @@ MAPRAM	equ	64
 MAPRPAGE	equ	3
 ;cislo stranky pro uchovani pameti a spol.
 BACKPAGE	equ	1
+;cislo stranky pro screensaver (zaloha vram, casem mozna i nacitany kod z disku pri bootovani)
+SSPAGE	equ	2
 
 ;data v BACKPAGE
 
@@ -300,9 +298,8 @@ SNAPC	equ	ACTPAGE-2
 SNAPAGE	equ	SNAPC-1
 
 ;promenne pro praci s casem (musi byt takhle za sebou)
-;screensaver removed
-;SSTIMER	equ	SNAPAGE-1		;casovac screensaveru
-INTCNT	equ	SNAPAGE-2		;pocitadlo preruseni (jede porad dokola)
+SSTIMER	equ	SNAPAGE-1		;casovac screensaveru
+INTCNT	equ	SSTIMER-2		;pocitadlo preruseni (jede porad dokola)
 
 ;priznak spravne druhe casti ("bootuje" se)
 ;0=neni, 2=je (2 kuli snadnemu vypisu)
@@ -401,12 +398,10 @@ RST24ENDE
 		org	31
 		defb	24			;jr 66 (ROMINTE)
 
-;rst 32 - volno
-		ld	hl,0			;musi byt kuli predesle adrese
-;screensaver removed
-;		ld	hl,SSAVER
-;		ld	a,l
-;		ld	(SSTIMER),a
+;rst 32 - reset screensaveru
+		ld	hl,SSAVER		;opcode se pouziva pro JR z predesle adresy!
+		ld	a,l
+		ld	(SSTIMER),a
 		ret
 RST32ENDE
 
@@ -444,18 +439,17 @@ ROMINTE	push	af
 		jr	nz,INT1E
 		inc	hl
 		inc	(hl)
-;screensaver removed
-;		inc	hl
-;		ld	a,(hl)
-;		or	a
-;		jr	z,INT1E
-;		dec	(hl)
+		inc	hl
+		ld	a,(hl)
+		or	a
+		jr	z,INT1E
+		dec	(hl)
 INT1E	pop	hl
 		pop	af
 		ei
-		ret
+;		ret			;pokracuje dalsim byte!
 
-		org	85
+;		org	85
 ;sem pri NMI pri pristrankovanem DEMFIRu
 ;a pouziva i depak LOGA (detekce adresy)
 		ret				;musi byt na adrese 85!!!
@@ -972,6 +966,12 @@ INKEYS3	ld	a,CON_DEL
 		ld	(REPPER),a
 		xor	a
 		ld	(LASTKEY),a
+;jestlipak poustet screensaver (musi se postarat o zalohu VRAM)
+	ifdef WITH_SS
+		ld	a,(SSTIMER)
+		or	a
+		call	z,DEMFSS
+	endif
 		jr	INKEYSX
 
 MINANO	ld	d,a
@@ -1341,13 +1341,6 @@ INPCHAR	inc	hl
 		jr	BYTESAVE1
 
 
-;najde konec input bufferu (ukazuje na posledni platny znak)
-INPUTFEND	inc	hl
-		bit	7,(hl)
-		jr	z,INPUTFEND
-		dec	hl
-		ret
-
 BEF_SVBE
 ;odchyceni save (jen pokracuje zpet v ZX ROM)
 		org	$4C6
@@ -1360,6 +1353,13 @@ GAP_SVBE	equ	$-BEF_SVBE
 		ex	(sp),hl
 		jp	TOBASROM
 ;konec odchyceni save
+
+;najde konec input bufferu (ukazuje na posledni platny znak)
+INPUTFEND	inc	hl
+		bit	7,(hl)
+		jr	z,INPUTFEND
+		dec	hl
+		ret
 
 ;test "signatury" image
 ;NZ-neni to on
@@ -1571,15 +1571,8 @@ INFO4	rst	16
 	ifdef WITH_MTF
 		defb	"MTF "
 	endif
-;	ifdef TOUT_LONG
-;		defb "LoT "
-;	endif
-;screensaver removed
-;	ifdef WITH_SS
-;		defb "SSv "
-;	endif
-	ifdef WITH_SC
-		defb "SCp "
+	ifdef WITH_SS
+		defb "SSv "
 	endif
 		defb ' '+128
 
@@ -1773,14 +1766,6 @@ SPOLMED	ld	a,16
 		defb	20,128
 
 		ei
-;screensaver removed
-;	ifdef WITH_SS
-;		ld	a,(SSTIMER)
-;		or	a
-;		jr	nz,NMIK2
-;		call	DEMFSS
-;		jp	NMIMENU
-;	endif
 NMIKEYS	call	INKEYSRAW
 		ld	hl,NMIPROG
 NMIK4	ld	a,(hl)
@@ -1954,10 +1939,9 @@ VRAMSEL3	djnz	VRAMSEL2
 		ld	(ACTPAGE),a
 		and	127-8			;vzdy 1. VRAM
 		out	(253),a
-;screensaver removed
-;	ifdef WITH_SS
-;		rst	32
-;	endif
+	ifdef WITH_SS
+		rst	32
+	endif
 		jp	NMIMENU
 
 ;zakazani 128k strankovani
@@ -2313,10 +2297,9 @@ DOCRCE	xor	a
 		ld	(ROMCRC),hl
 CRCOKE
 ;init screenseveru
-;screensaver removed
-;	ifdef WITH_SS
-;		rst	32
-;	endif
+	ifdef WITH_SS
+		rst	32
+	endif
 		ld	a,BACKPAGE
 		out	(RAMPORT),a
 		ld	hl,1
@@ -2346,11 +2329,17 @@ DEL_CHS2	dec	e
 
 
 
-;screensaver removed
-;	ifdef WITH_SS
+	ifdef WITH_SS
 ;screen saver
-;DEMFSS	xor	a
-;		call	ATRIB
+DEMFSS	di
+		ld	a,SSPAGE
+		rst	48
+		ld	hl,16384
+		ld	de,8192
+		ld	bc,6912
+		ldir
+		xor	a
+		call	ATRIB
 ;DEMFSS3	ld	bc,100*256+23
 ;DEMFSS2	dec	b
 ;		jr	nz,DEMFSS4
@@ -2366,15 +2355,28 @@ DEL_CHS2	dec	e
 ;		rst	16
 ;		rst	24
 ;		defb	0,16,1,"I'm Screen Saver. Press any key", '.'+128
-;DEMFSS4	halt
-;		xor	a
-;		in	a,(254)
-;		cpl
-;		and	31
-;		jr	z,DEMFSS2
-;		rst	32	;nastaveni citace
-;		ret
-;	endif
+;DEMFSS4
+DEMFSS2
+		xor	a
+		in	a,(254)
+		cpl
+		and	31
+		jr	z,DEMFSS2
+		ld	hl,8192
+		ld	de,16384
+		ld	bc,6912
+		ldir
+DEMFSS5	xor	a
+		in	a,(254)
+		cpl
+		and	31
+		jr	nz,DEMFSS5
+		xor	a
+		rst	48
+		rst	32	;nastaveni citace
+		ei
+		ret
+	endif
 
 ;detekce zarizeni
 TSTATAPI	ld	a,CIDENTA
@@ -2637,10 +2639,9 @@ INPUTSEC3	push	iy
 		jr	c,INPUTSEC5
 IVALOK	ld	(ISOSTART),bc
 		ld	(ISOSTART+2),de
-;screensaver removed
-;	ifdef WITH_SS
-;		rst	32
-;	endif
+	ifdef WITH_SS
+		rst	32
+	endif
 		ret
 
 
@@ -2730,10 +2731,9 @@ FNDNOPR	ld	a,1
 		dec	bc
 FINDISO7	ld	(ISOSTART),de
 		ld	(ISOSTART+2),bc
-;screensaver removed
-;	ifdef WITH_SS
-;		rst	32
-;	endif
+	ifdef WITH_SS
+		rst	32
+	endif
 		ret
 
 FINDISO5	pop	de
@@ -3890,12 +3890,10 @@ RST24ENDR
 		phase 31
 		defb	24			;jr 66 (ROMINTR)
 
-;rst 32 - volno
-		ld	hl,0			;musi byt kuli predesle adrese
-;screensaver removed
-;		ld	hl,SSAVER
-;		ld	a,l
-;		ld	(SSTIMER),a
+;rst 32 - reset screensaveru
+		ld	hl,SSAVER		;opcode se pouziva pro JR z predesle adresy!
+		ld	a,l
+		ld	(SSTIMER),a
 		ret
 RST32ENDR
 
@@ -3937,19 +3935,18 @@ ROMINTR	push	af
 		jr	nz,INT1R
 		inc	hl
 		inc	(hl)
-;screensaver removed
-;		inc	hl
-;		ld	a,(hl)
-;		or	a
-;		jr	z,INT1R
-;		dec	(hl)
+		inc	hl
+		ld	a,(hl)
+		or	a
+		jr	z,INT1R
+		dec	(hl)
 INT1R	pop	hl
 		pop	af
 		ei
-		ret
+;		ret			;pokracuje dalsim byte!
 
-		org	8192+85
-		phase 85
+;		org	8192+85
+;		phase 85
 ;sem pri NMI pri pristrankovanem DEMFIRu
 ;a pouziva i depak LOGA (detekce adresy)
 		ret				;musi byt na adrese 85!!!
@@ -4118,10 +4115,9 @@ DORESETR	ld	sp,NMISTACK	;je celkem jedno kde
 		ld	(GPART2),a
 CRCOKR
 ;init screenseveru
-;screensaver removed
-;	ifdef WITH_SS
-;		rst	32
-;	endif
+	ifdef WITH_SS
+		rst	32
+	endif
 		ld	a,BACKPAGE
 		rst	48
 ;kdyby nekdo nahodou volal TRDOS
@@ -4486,7 +4482,6 @@ TPBRSNC	ld	hl,INDEX+2
 
 NEXTPG	rst	40
 		defw	CLS
-;screensaver removed
 ;	ifdef WITH_SS
 ;		rst	32
 ;	endif
@@ -4761,7 +4756,6 @@ BROWKEYS	cp	'7'
 		jp	FILEFIND
 
 UP
-;screensaver removed
 ;	ifdef WITH_SS
 ;		rst	32
 ;	endif
@@ -4800,7 +4794,6 @@ UDSPOL	ld	a,b
 		jp	CLSTATUS
 
 DOWN
-;screensaver removed
 ;	ifdef WITH_SS
 ;		rst	32
 ;	endif
@@ -4830,7 +4823,6 @@ DOWN2
 		jr	UDSPOL
 
 PGUP
-;screensaver removed
 ;	ifdef WITH_SS
 ;		rst	32
 ;	endif
@@ -4846,7 +4838,6 @@ PGUP
 		jp	NEXTPG
 
 PGDW
-;screensaver removed
 ;	ifdef WITH_SS
 ;		rst	32
 ;	endif
@@ -5169,7 +5160,6 @@ CLSTATUS	rst	24
 
 ;vybran nejaky soubor
 ENTER
-;screensaver removed
 ;	ifdef WITH_SS
 ;		rst	32
 ;	endif
@@ -7497,6 +7487,10 @@ FREEROM1	equ	8192-ROMEND1
 	if FREERAM1 < 0
 		error "\aNo free RAM1 left!"
 	endif
+
+;	if FREERAM2 < 0
+;		error "\aNo free RAM2 left!"
+;	endif
 
 	if OVRLENDE <> OVRLENDR
 		error "\aOverlays not match!"
