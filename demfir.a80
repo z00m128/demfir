@@ -1916,7 +1916,10 @@ RESET	call	SSHIFT			;pri SS reset i s vymazanim RAM & spol
 		ld	a,(ROMCRC)
 		cpl
 		ld	(ROMCRC),a
-RESET2	rst	0
+RESET2	di					;workaround pro ISOROM a podobne hruzy
+		xor	a
+		ld	de,$FFFF
+		jp	$11CB
 
 
 ;vyber VRAM
