@@ -33,6 +33,7 @@ Features:
   taken. Others are shown in browser but skipped during tape emulation.
 - POK file read and easy way to turn on and off any cheat (cheat is group of
   POKEs applied together).
+- Screensaver
 - Modular architecture - some parts can be turned off at compile time and there
   will be space for some other modules.
 
@@ -143,6 +144,7 @@ Third line shows other modules and settings
 - +3R = changes ROM of +2A/+3 via port 8189, enabled by ROM_2A_3 in config.a80
 - MTF = more TZX features (support for nontap blocks in TZX), enabled by
         WITH_MTF in config.a80
+- SSv = screensaver, enabled by WITH_SS in config.a80
 
 Logo can be selected by USELOGO (range 0-3, see config.a80).
 If you don't like standard zx font, enable BOLD_FONT in config.a80 and you will

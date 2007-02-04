@@ -32,6 +32,7 @@ Fièury:
   pøeskoèeny.
 - Ètení POK souborù a snadné zapínání a vypínání jednotlivých cheatù (cheat je
   skupina POKE aplikovaných naráz).
+- "Spoøiè obrazovky"
 - Modulární struktura - nìkteré èásti je pøi kompilaci mo¾no vypnout a udìlat
   si tak místo pro nìjaké jiné :).
 
@@ -148,6 +149,7 @@ Ve tøetím øádku jsou ostatní moduly a nastavení
 - +3R = stránkuje ROM +2A/+3 na portu 8189, povoluje ROM_2A_3 v config.a80
 - MTF = podpora pro nìkteré TZX bloky, které obsahují dal¹í data nepotøebná pro
         emulaci pásky, povoluje WITH_MTF v config.a80
+- SSv = spoøiè obrazovky, povoluje WITH_SS v config.a80
 
 Logo lze zmìnit pomocí USELOGO (rozsah 0-3, viz. config.a80).
 Komu se nezdá originální zx font, povolením BOLD_FONT v config.a80 si mù¾e

@@ -31,8 +31,8 @@
 
 		include "config.a80"
 
-DVERS	equ	"d0.7b"
-;DVERS	equ	"61104"
+;DVERS	equ	"d0.7b"
+DVERS	equ	"70204"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -50,7 +50,9 @@ RSTAT	equ	191
 CRESET	equ	$10
 CRESETA	equ	$08
 CREAD	equ	$20
+CREAD10A	equ	$28
 CWRITE	equ	$30
+CWRITE10A	equ	$2A
 CDIAG	equ	$90
 CIDENT	equ	$EC
 CIDENTA	equ	$A1
@@ -317,8 +319,11 @@ TZXBPOS	equ	TZXBLKID-2
 ;flag zda pri cteni klaves testovat shifty ci nikoliv
 INPSHFT	equ	TZXBPOS-1
 
+;priznak ze se ma ukladat (malo registru)
+DOINGWR	equ	INPSHFT-1
+
 ;stack pri nacitani snapu
-LOADSTACK	equ	INPSHFT
+LOADSTACK	equ	DOINGWR
 
 ENDVRS	equ	LOADSTACK-100
 
@@ -844,7 +849,7 @@ DES2		ld	c,a
 GETISO1	ld	hl,BUFFER
 		ld	de,LBADISK
 		ld	a,2
-		jp	READSEC
+		jp	RDWRSEC
 
 ;vytvori index sektoru
 ;v HL adresa prvniho souboru
@@ -901,10 +906,8 @@ GETINDEND	dec	de				;predesla polozka (tj. posledni)
 		ret
 
 
-;podprogam pro cteni klaves
-;(ceka) s autorepeatem
-;potrebuje povolene preruseni
-;hodnota v A a D
+;podprogam pro cteni klaves (ceka) s autorepeatem
+;potrebuje povolene preruseni hodnota v A a D
 INKEYSRAW	xor	a
 		defb	33				;preskoceni dalsi instrukce
 INKEYS	ld	a,255
@@ -983,6 +986,9 @@ MINANO	ld	d,a
 		ld	a,d
 INKEYSPOL	push	af
 		call	CLICK
+	ifdef WITH_SS
+		rst	32
+	endif
 		pop	af
 		ld	d,a
 		ret
@@ -1592,8 +1598,7 @@ DVRSN	defb	DVERS
 		ld	(VALIDEV),a
 		ld	ix,SLA_NAME
 		call	DETECT
-;tesne po detekci nektera zar.
-;neodpovidaji na cteni
+;tesne po detekci nektera zarizeni neodpovidaji na cteni
 		ei
 		call	NOSIFR
 		di
@@ -1613,8 +1618,7 @@ NEWMED3	xor	a
 		rst	24				;call PRINTSP
 		defb	22,17,128
 		call	SPACES
-INITD2
-		rst	24				;call PRINTSP
+INITD2	rst	24				;call PRINTSP
 		defb	16,6
 		defb	22,15,0
 		defb	20,1,"D",20
@@ -1630,8 +1634,7 @@ INITD2
 		jr	z,INITD3
 		ld	ix,SLA_NAME
 		ld	hl,SLAVE
-INITD3
-		call	PRINT128E
+INITD3	call	PRINT128E
 		call	GETREADY
 		ld	a,6
 		rst	16
@@ -1916,10 +1919,7 @@ RESET	call	SSHIFT			;pri SS reset i s vymazanim RAM & spol
 		ld	a,(ROMCRC)
 		cpl
 		ld	(ROMCRC),a
-RESET2	di					;workaround pro ISOROM a podobne hruzy
-		xor	a
-		ld	de,$FFFF
-		jp	$11CB
+RESET2	rst	0
 
 
 ;vyber VRAM
@@ -1958,7 +1958,6 @@ DIPAGING	ld	a,48+64			;kratky out
 ;podpurne rutiny
 
 ;obnoveni puvodni obrazovky
-;delka (bc) musi byt predana
 POPSCR	di
 		ld	a,BACKPAGE
 		rst	48
@@ -1984,10 +1983,14 @@ CAINIT2	ld	hl,0
 		ld	hl,CACHE
 		jr	CASPUKR
 
-;precte BC bajtu od posledniho mista na adresu DE
+CAWRITE	defb	62			;ld a,175
+CAREAD	xor	a
+		ld	(DOINGWR),a
+;precte/ulozi BC bajtu od posledniho mista na/z adresu/y DE
 ;CARRY error
 ;DE ukazuje za nacteny blok (vzdycky???)
-CAREAD	ld	hl,(CACHEREM)
+		ld	hl,(CACHEREM)
+		ex	af,af'
 		ld	a,l
 		or	h
 		jr	z,CARD2
@@ -1998,7 +2001,14 @@ CAREAD	ld	hl,(CACHEREM)
 ;jen prenes data
 		ld	(CACHEREM),hl
 		ld	hl,(CACHEKUR)
-		ldir
+		ex	af,af'
+		or	a
+		jr	z,NOWR1
+		ex	de,hl
+NOWR1	ldir
+		or	a
+		jr	z,CASPUKR
+		ex	de,hl
 CASPUKR	ld	(CACHEKUR),hl
 		or	a
 		ret
@@ -2010,9 +2020,23 @@ CARD1	add	hl,bc
 		ld	b,h
 		ld	c,l
 		ld	hl,(CACHEKUR)
-		ldir
+		ex	af,af'
+		or	a
+		jr	z,NOWR2
+		ex	de,hl
+NOWR2	ldir
+		or	a
+		jr	z,NOWR3
+		ex	de,hl
+;ulozeni dat v cache
+		push	de
+		call	CAFLUSH
+		pop	de
+;FIXME! test carry (bacha na zasobnik)
+;posun se na dalsi sektor
+		call	INCLBA
 ;neni potreba ukladat pozici
-		pop	hl
+NOWR3	pop	hl
 		pop	bc
 ;v BC celkova pozadovana delka
 ;v HL kolik uz se preneslo ze zbytku cache (obracene kuli skoku)
@@ -2027,7 +2051,6 @@ CARD2	push	de
 ;konec jestli prenesl vsechno
 		pop	de
 		jp	z,CAINIT2
-		push	de
 ;zjisti pocet sektoru (/2048)
 		ld	a,h
 		srl	a
@@ -2035,21 +2058,21 @@ CARD2	push	de
 		srl	a
 		jr	z,CARD3
 ;budem cist vice sektoru naraz
-		pop	de
 ;v DE kam nacist
 ;v HL zbyvajici pozad. delka
 		ex	de,hl
 		push	de
 		push	af
 		ld	de,CACHELBA
-		call	READSEC
+		call	RDWRSEC
 ;tady by to chtelo test CARRY
 		pop	af
 		pop	de
-		push	hl
 		ld	c,a
 		ld	b,0
+		push	hl
 		call	ADDLBA
+		pop	hl
 		ld	a,c
 		add	a,a
 		add	a,a
@@ -2058,36 +2081,61 @@ CARD2	push	de
 		ld	c,0
 ;v BC je prave nactena delka
 ;v DE zbyvajici pozad. delka
+;v HL adresa kde zkoncilo cteni?
 		ex	de,hl
 		or	a
 		sbc	hl,bc
 		jp	z,CAINIT2
 ;v HL kolik jeste prenest
-CARD3	push	hl
+;v DE kam
+CARD3	push	de
+		push	hl
 		ld	hl,CACHE
 		push	hl
+;pro zapis pouze prenest data
+		ld	a,(DOINGWR)
+		or	a
+		jr	nz,DOWR1
 		ld	de,CACHELBA
-		call	READ1SEC
-		pop	hl
+		call	RDWR1SEC
+DOWR1	pop	hl
 		pop	bc
 		pop	de
-;DE kam
-;BC kolik
-;v HL odkud
-		ret	c
-		ldir
+;DE kam, BC kolik, v HL odkud
+		ret	c				;pro WR je to OK
+		ld	a,(DOINGWR)
+		or	a
+		jr	z,NOWR5
+		ex	de,hl
+NOWR5	ldir
+		or	a
+		jr	z,NOWR6
+		ex	de,hl
 ;uloz ukazatele
-		ld	(CACHEKUR),hl
+NOWR6	ld	(CACHEKUR),hl
 		ld	b,h
 		ld	c,l
 		ld	hl,CACHE+2048
 		or	a
 		sbc	hl,bc
 		ld	(CACHEREM),hl
-;posun se na dalsi sektor
-		call	INCLBA
+;posun se na dalsi sektor (ne pro write)
 		or	a
+		call	z,INCLBA
+		or	a				;NC
 		ret
+
+;ulozeni sektoru cache na disk
+;FIXME! chtelo by to neplatna data (zbytek cache) vyplnit 0
+;(pak ovsem pozor na volani z CAWRITE)
+CAFLUSH	ld	hl,(CACHEREM)
+		ld	a,l
+		or	h
+		ret	z			;pokud v cache nic neni tak neukladej
+		ld	de,CACHELBA
+		ld	hl,CACHE
+		jp	RDWR1SEC
+
 
 ;preskoci DEBC bajtu od posledniho mista
 ;zatim vyuzivano pouze pro TZX
@@ -2166,7 +2214,7 @@ CASK2	ld	e,l
 CASK3	push	hl
 		ld	hl,CACHE
 		ld	de,CACHELBA
-		call	READ1SEC
+		call	RDWR1SEC
 		pop	bc
 ;BC kolik
 		ret	c
@@ -2305,7 +2353,14 @@ CRCOKE
 	endif
 		ld	a,BACKPAGE
 		out	(RAMPORT),a
+	ifdef STDRST
 		ld	hl,1
+	else
+;workaround pro ISOROM a podobne hruzy
+		xor	a
+		ld	de,$FFFF
+		ld	hl,$11CB
+	endif
 		jp	ROMJPHL
 
 
@@ -2334,6 +2389,7 @@ DEL_CHS2	dec	e
 
 	ifdef WITH_SS
 ;screen saver
+;POZOR!!! diky povolenemu preruseni se prepisuje INTCNT ale v pristrankovane strance! (tj. se zalohou VRAM)
 DEMFSS	di
 		ld	a,SSPAGE
 		rst	48
@@ -2341,30 +2397,57 @@ DEMFSS	di
 		ld	de,8192
 		ld	bc,6912
 		ldir
-		xor	a
-		call	ATRIB
-;DEMFSS3	ld	bc,100*256+23
-;DEMFSS2	dec	b
-;		jr	nz,DEMFSS4
-;		dec	c
-;		jr	z,DEMFSS3
-;		push	bc
-;		xor	a
-;		call	ATRIB
-;		pop	bc
-;		ld	a,22
-;		rst	16
-;		ld	a,c
-;		rst	16
-;		rst	24
-;		defb	0,16,1,"I'm Screen Saver. Press any key", '.'+128
-;DEMFSS4
-DEMFSS2
+		call	SCRINIT2
+		ld	a,16
+		rst	16
+		ld	a,7
+		ld	b,8
+DEMFSS3	rst	24
+		defb "  Hello. I'm your Screen Saver.",13,13
+		defb "    Press any key to exit me.",13+128
+		djnz	DEMFSS3
+		ei
+		ld	de,DEMFSSTBE
+DEMFSS2	ld	a,(de)
+		inc	a
+		jr	nz,DEMFSS4
+		ld	de,DEMFSSTB
+		ld	a,r
+		and	7
+		ld	l,a
+		add	a,a
+		add	a,l
+		ld	l,a
+		ld	h,0
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		ld	bc,22528
+		add	hl,bc
+DEMFSS4	ld	a,(de)
+		push	de
+		ld	e,l
+		ld	d,h
+		inc	de
+		ld	bc,3*32-1
+		ld	(hl),a
+		push	hl
+		ldir
+		pop	hl
+		pop	de
+		inc	de
+		halt
+		halt
+		halt
+		halt
 		xor	a
 		in	a,(254)
 		cpl
 		and	31
 		jr	z,DEMFSS2
+		di
 		ld	hl,8192
 		ld	de,16384
 		ld	bc,6912
@@ -2379,6 +2462,13 @@ DEMFSS5	xor	a
 		rst	32	;nastaveni citace
 		ei
 		ret
+
+DEMFSSTB	defb	0,1,1+64,2,2+64,3,3+64,4,4+64,5,5+64,6,6+64,7
+		defb	7+64,7+64,7+64,7+64,7+64,7+64
+		defb	7,6+64,6,5+64,5,4+64,4,3+64,3,2+64,2,1+64,1,0
+DEMFSSTBE	defb	255
+
+SSLEN	equ	$-DEMFSS
 	endif
 
 ;detekce zarizeni
@@ -2778,7 +2868,7 @@ GETPVD	call	RDYCHNG
 		ld	hl,BUFFER
 		ld	de,LBADISK
 		push	hl
-		call	READ1SEC
+		call	RDWR1SEC
 		pop	hl
 		ret	c
 ;je to skutecne PVD?
@@ -2820,7 +2910,7 @@ DASBOOT	ld	a,MAPRPAGE
 		pop	hl
 		push	hl
 		ld	de,TUREADY	;potrebujem tri nuly
-		call	READSEC
+		call	RDWRSEC
 		jp	c,BADBOOT		;chyba pri cteni, ma cenu zkouset el-torito? nejspis ne
 		call	CHECKBOOT
 		jr	z,BOOTRDY
@@ -2839,7 +2929,7 @@ DASBOOT	ld	a,MAPRPAGE
 		dec	hl
 		dec	hl
 		push	de
-		call	READ1SEC
+		call	RDWR1SEC
 		pop	de
 		jr	c,BADBOOT
 ;porovnani signatury boot volume descriptoru
@@ -2864,7 +2954,7 @@ DASBOOT	ld	a,MAPRPAGE
 		ex	de,hl
 		pop	hl
 		push	hl
-		call	READ1SEC
+		call	RDWR1SEC
 		jr	c,BADBOOT
 ;validation entry neresime
 		pop	hl
@@ -2899,7 +2989,7 @@ DASBOOT	ld	a,MAPRPAGE
 		pop	hl
 		push	hl
 		ld	a,4			;4x 2kb
-		call	READSEC
+		call	RDWRSEC
 		jr	c,BADBOOT
 		call	CHECKBOOT
 		jr	nz,BADBOOT
@@ -3140,12 +3230,12 @@ IDEDTRD1	in	a,(RPARAM)
 
 ;precte jeden sektor na adresu HL
 ;ukazatel na lba sektoru v DE
-READ1SEC	ld	a,1
+RDWR1SEC	ld	a,1
 
 ;precte A sektoru z cdrom na adresu HL
 ;ukazatel na lba sektoru v DE
 ;navrat s carry kdyz chyba
-READSEC	push	hl
+RDWRSEC	push	hl
 		ex	af,af'
 		ex	de,hl
 		ld	c,(hl)
@@ -3161,7 +3251,7 @@ READSEC	push	hl
 		ld	a,8
 ;mozna by tu mohl by jump
 READSEC5	cp	3
-		jr	nc,READSEC4
+		jp	nc,READSEC4
 ;nasobeni 4
 		ex	af,af'
 		add	a,a
@@ -3212,8 +3302,7 @@ IDEMAS	dec	a
 		ld	ix,MAS_NAME
 		jr	z,LBA_CHS1
 		ld	ix,SLA_NAME
-LBA_CHS1
-		push	hl
+LBA_CHS1	push	hl
 		ex	de,hl
 		ld	d,(ix+39)
 		call	DIV_32_8
@@ -3239,23 +3328,37 @@ NOCHSHDD
 		ld	c,e
 		ld	e,d
 		ld	d,a
-CHSHDD
+CHSHDD	ld	a,(DOINGWR)
+		or	a
 		ld	a,CREAD
-		ex	af,af'
+		jr	z,HDDNOWR
+		ld	a,CWRITE
+HDDNOWR	ex	af,af'
 		push	af
 		call	IDEOUT
-;tady by to asi chtelo test CRY
-;ale stejne to kdyztak umre dal
+;tady by to asi chtelo test CARRY, ale stejne to kdyztak umre dal
 		pop	af
 ;do A pocet sektoru
 		ld	bc,RDATA
 		jr	READSEC2
 
-READSEC4X
-		ld	a,2
-READSEC4
+
+;"osetreni" chyb pri cteni
+ERROR2	pop	de
+		pop	hl
+ERROR	in	a,(RPARAM)
+		rra
+		rra
+		rra
+		rra
+		out	(254),a
+		scf
+		ret
+
+;pokracovani rutiny pro cteni/zapis
+READSEC4X	ld	a,2
 ;velikost sektoru (2048 or 512)
-		out	(RCYLH),a
+READSEC4	out	(RCYLH),a
 		xor	a
 		out	(RCYLL),a
 		push	de
@@ -3266,8 +3369,12 @@ READSEC4
 		call	CMD_DTRD
 		pop	de
 		jr	c,ERROR
-		ld	a,$28
-		out	(RDATA),a
+		ld	a,(DOINGWR)
+		or	a
+		ld	a,CREAD10A
+		jr	z,RDWDCMD
+		ld	a,CWRITE10A
+RDWDCMD	out	(RDATA),a
 		ld	a,c
 		ld	bc,RDATA
 		out	(c),b
@@ -3292,6 +3399,9 @@ READSEC4
 READSEC2	ex	af,af'
 		call	CMD_DTRD
 		jr	c,ERROR
+		ld	a,(DOINGWR)
+		or	a
+		jr	nz,WRITESEC
 		inir
 		inir
 		ld	a,(MEDSIZE+7)
@@ -3303,27 +3413,30 @@ READSEC2	ex	af,af'
 		inir
 		inir
 		inir
-READSEC3
-		ex	af,af'
+READSEC3	ex	af,af'
 		dec	a
 		jr	nz,READSEC2
 		call	FASTDRQ
 		in	a,(RCOM)
 		rra
-		jr	c,ERROR
-;NC
-		ret
+		jp	c,ERROR
+		ret				;s NC
 
-ERROR2	pop	de
-		pop	hl
-ERROR	in	a,(RPARAM)
-		rra
-		rra
-		rra
-		rra
-		out	(254),a
-		scf
-		ret
+;lisici se cast pro zapis sektoru
+WRITESEC	otir
+		otir
+		ld	a,(MEDSIZE+7)
+		cp	3
+		jr	c,READSEC3
+;FIXME! sem to nikdy nepujde, nebot CDROM neumi primo zapisovat
+;az dojde pamet, tady se da usetrit :)
+		otir
+		otir
+		otir
+		otir
+		otir
+		otir
+		jr	READSEC3
 
 
 ;pocitani casu pro timeout
@@ -3735,35 +3848,35 @@ KEYSCSTAB	defb	"BHY",10,8,"TGV"
 KEYSSSTAB	defb "*^[&%>}/"
 		defb ",-]'$<{?"
 		defb ".+",127,"(#"		;(c)
-		defb	"|",92,96			;(SS+E=|), backslash, pound
-		defb	0,"=;)@||:"		;(SS+W=|)
-		defb	" ",13,34,"_!."	;(SS+Q=.)
+		defb	16,92,96			;(SS+E=16), backslash, pound
+		defb	0,"=;)@",15,"|:"	;(SS+W=15)
+		defb	" ",13,34,"_!",14	;(SS+Q=14)
 		defb "~",0
 
 ;kody klaves NMI menu spolecne s obsluznymi programy
-NMIPROG	defb	"q"
+NMIPROG	defb	'q'
 		defw	QUIT
 ;eject removed
-;		defb	"e"
+;		defb	'e'
 ;		defw	EJMED
-		defb	"r"
+		defb	'r'
 		defw	RESET
-		defb	"m"
+		defb	'm'
 		defw	MEDIUM
-		defb	"d"
+		defb	'd'
 		defw	CHDEV
-		defb	"i"
+		defb	'i'
 		defw	DEMINT
-		defb	"f"
+		defb	'f'
 		defw	FINDIMG
-		defb	"s"
+		defb	's'
 		defw	SECTIMP
-		defb	"v"
+		defb	'v'
 		defw	VRAMSEL
-		defb	"p"
+		defb	'p'
 		defw	DIPAGING
 	ifdef WITH_POK
-		defb	"c"
+		defb	'c'
 		defw	ENTPOKMAN
 	endif
 		defb	13
@@ -4134,7 +4247,14 @@ CRCOKR
 		ex	de,hl
 ;v HL SNARUN
 		ld	(hl),a
+	ifdef STDRST
 		ld	hl,1
+	else
+;workaround pro ISOROM a podobne hruzy
+		xor	a
+		ld	de,$FFFF
+		ld	hl,$11CB
+	endif
 		jp	ROMJPHL
 
 ;data pro TRDOS wrapper (259B)
@@ -4415,7 +4535,7 @@ CARDO2	ld	a,(hl)
 CARDO1	ld	hl,CACHE
 		ld	de,CACHELBA
 		rst	40
-		defw	READ1SEC
+		defw	RDWR1SEC
 		ret	c
 		rst	40
 		defw	INCLBA
@@ -4485,9 +4605,9 @@ TPBRSNC	ld	hl,INDEX+2
 
 NEXTPG	rst	40
 		defw	CLS
-;	ifdef WITH_SS
-;		rst	32
-;	endif
+	ifdef WITH_SS
+		rst	32
+	endif
 		rst	24				;call PRINTSP
 		defb	22,0,0,16,7+128
 		ld	de,(VYPIS)
@@ -4708,21 +4828,15 @@ VYBER	call	KURZOR
 		ld	hl,INPBUFF
 		rst	40
 		defw	PRINTB
+;	ifdef WITH_SS
+;		rst	32
+;	endif
 		jr	VYBERSM
 
 FLPRM	call	GETFILE
 		rst	40
 		defw	FILEPARM
 VYBERSM
-;screensaver removed
-;	ifdef WITH_SS
-;		ld	a,(SSTIMER)
-;		or	a
-;		jr	nz,VYBERSM2
-;		rst	40
-;		defw	DEMFSS
-;		jp	NEXTPG
-;	endif
 		rst	40
 		defw	INKEYS
 ;TRUE_VIDEO je prefix, ber dalsi znak jako znak pro hledani
@@ -4736,27 +4850,24 @@ VYBERSM
 		out	(254),a
 		jp	FILEFIND
 
-BROWKEYS	cp	'7'
-		jr	z,UP
-		cp	11
-		jr	z,UP
-		cp	'6'
-		jr	z,DOWN
-		cp	10
-		jr	z,DOWN
-		cp	'5'
-		jr	z,PGUP
-		cp	8
-		jr	z,PGUP
-		cp	'8'
-		jr	z,PGDW
-		cp	9
-		jr	z,PGDW
-		cp	13
-		jp	z,ENTER
-		cp	' '
-		ret	z
-		jp	FILEFIND
+;nejde pouzit to u NMI, jina ROM
+;FIXME! nejak spojit s klavesami u pokemanageru
+BROWKEYS	ld	hl,BRPROG
+BRK1		ld	a,(hl)
+		or	a
+		jp	z,FILEFIND
+		cp	d
+		inc	hl
+		jr	z,BRK2
+		inc	hl
+		inc	hl
+		jr	BRK1
+
+BRK2		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		jp	(hl)
 
 UP
 ;	ifdef WITH_SS
@@ -4926,7 +5037,7 @@ DOPGUP2	rst	40
 		add	hl,de
 		ld	(VYPIS),hl
 		or	a
-		ret
+RET2MAIN	ret			;pouzito jenom jako ret
 
 ;posun na dalsi stranku
 DOPGDW	ld	hl,(VYPIS)
@@ -5242,7 +5353,7 @@ TAPICLD	push	bc
 	endif	;WITH_SCR
 
 NOTAPIC
-;fixme! sem pridat obsluhu dalsich souboru
+;FIXME! sem pridat obsluhu dalsich souboru
 		jp	VYBERSM
 
 ;nastaveni load cursoru a navrat do NMI menu
@@ -5837,7 +5948,7 @@ NENITZX
 		ld	hl,CACHE
 		push	hl
 		rst	40
-		defw	READ1SEC
+		defw	RDWR1SEC
 ;bylo by dobre zneplatnit data o poke?
 ;rozebrani .pok souboru
 		pop	hl
@@ -7203,12 +7314,75 @@ IS48KMODE	ld	a,(ACTPAGE)
 		defb	22,12,0,17,0,16,2,18,1,19,1
 		defb	"Can't load 128K snap in 48K mode"
 		defb	19,0,18,128
-		ei
+;		ei
 		rst	40
 		defw	INKEYS		;cekme na klavesu
 		jp	NEXTPG
 
 	endif
+
+
+;prepis souboru
+OVRWRT	ld	a,(TAPACT)	;pro tapku ne
+		or	a
+		jr	nz,NOVRWRT
+		call	GETFILE
+		bit	1,(ix+25)
+		jr	nz,NOVRWRT	;pro adresar ne
+	ifdef WITH_SCR
+;detekce obrazku
+		ld	a,(ix+12)
+		or	(ix+13)
+		jr	nz,NOVRSCR
+		ex	de,hl
+		ld	l,(ix+10)
+		ld	h,(ix+11)
+;obrazek bez atributu?
+		ld	bc,6144
+		or	a
+		sbc	hl,bc
+		add	hl,bc
+		jr	z,OVRSCR
+;obrazek s atributy?
+		ld	b,6912/256	;c=0
+		or	a
+		sbc	hl,bc
+		jr	nz,NOVRSCRE
+;zapisem jako barevny/monochromaticky obrazek (delka v BC)
+OVRSCR	push	bc
+		push	de
+		rst	40
+		defw	POPSCR
+		pop	de
+		ld	hl,7			;posun na lba v polozce
+		add	hl,de
+		rst	40
+		defw	CAINIT
+		pop	bc
+		ld	de,16384
+		rst	40
+		defw	CAWRITE
+		rst	40
+		defw	CAFLUSH
+;FIXME! osetreni chyby pri zapisusu
+		xor	a
+		out	(254),a
+		jp	NEXTPG
+
+NOVRSCRE	ex	de,hl
+	endif ;WITH_SCR
+
+NOVRSCR
+
+
+NOVRWRT	rst	24
+		defb	22,23,0,17,0,16,2,18,1,19,1
+		defb	"Unknown or unsupported file type"
+		defb	19,0,18,128
+		rst	40
+		defw	INKEYS		;wait for key
+		jp	NEXTPG
+
 
 
 ;nakresli kurzor (browser)
@@ -7311,6 +7485,35 @@ EXTPOK	defb	"pok"
 ;	ifdef WITH_TRD
 ;EXTTRD	defb	"trd"
 ;	endif
+
+;kody klaves browseru menu spolecne s obsluznymi programy
+BRPROG	defb	'7'
+		defw	UP
+		defb	11
+		defw	UP
+		defb	'6'
+		defw	DOWN
+		defb	10
+		defw	DOWN
+		defb	'5'
+		defw	PGUP
+		defb	8
+		defw	PGUP
+		defb	'8'
+		defw	PGDW
+		defb	9
+		defw	PGDW
+		defb	13
+		defw	ENTER
+		defb	14
+		defw	RET2MAIN
+		defb	15
+		defw	OVRWRT
+		defb	16
+		defw	NEXTPG		;"sezrani" SS+E
+		defb	' '
+		defw	RET2MAIN
+		defb	0
 
 
 TZXMAGIC	defb	"ZXTape!",$1A

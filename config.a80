@@ -74,5 +74,9 @@ USELOGO	equ	3
 ; Pokud mate +2A/+3 s originalnim rozlozenim ROM (dve 32KB pameti), MUSI byt povoleno. Pokud mate upravenou +2A/+3 (32KB ROM a 32KB SRAM), MUSI byt zakazano. Pro ostatni modely neni dulezite (povoleno je vice kompatibilni).
 ROM_2A_3
 
+; If set, reset (R key) is performed as jp 1 else xor a - ld de,$ffff - jp $11CB
+; Je-li nastaveno, provadi se reset (klavesa R) jako jp 1, v opacnem pripade jako xor a - ld de,$ffff - jp $11CB
+;STDRST
+
 ; nastaveni pro VI (tabulatory 5 znaku a filetype)
 ; vim:set ts=5 ft=z8asl:

@@ -1,13 +1,14 @@
 SOURCE=demfir.a80
 BOOT=demfirboot
-INCLUDES=config.a80 $(BOOT).a80 basic.tpi logo.pck logof6.pck logof6_2.pck spectrum.font didaktik.font
+EMPTYS=em_color.scr em_mono.scr
+INCLUDES=config.a80 $(BOOT).a80 basic.tpi logo.pck logof6.pck logof6_2.pck spectrum.font didaktik.font 
 VERSION_LONG=$(shell grep "^DVERS" $(SOURCE)|cut -d \" -f 2)
 VERSION=$(shell echo $(VERSION_LONG)|tr -d .)
 BASE=$(SOURCE:%.a80=%$(VERSION))
 COMPILE=$(BASE).tap
 IMAGE0=$(BASE)_E.bin
 IMAGE1=$(BASE)_R.bin
-FILES=$(COMPILE) $(IMAGE0) $(IMAGE1) #devast_ide.tap
+FILES=$(COMPILE) $(IMAGE0) $(IMAGE1) $(EMPTYS) #devast_ide.tap
 DOCS=AUTHORS BUGS* ChangeLog* INSTALL* LICENSE Makefile README* TODO*
 DISTR_DIR=$(SOURCE:%.a80=%-$(VERSION_LONG))
 DEST=../..
@@ -38,11 +39,17 @@ $(COMPILE): $(SOURCE) $(INCLUDES) Makefile
 	@echo
 	cat basic.tpi $(BASE).pat > $(COMPILE)
 	@echo
-	echo '.cvsignore *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 $(BOOT).img' >.cvsignore
+	echo '.cvsignore *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 $(BOOT).img' $(EMPTYS) >.cvsignore
 	@echo
 
+em_mono.scr:
+	dd if=/dev/zero of=em_mono.scr bs=6144 count=1
+
+em_color.scr:
+	dd if=/dev/zero of=em_color.scr bs=6912 count=1
+
 clean:
-	rm -f *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 .cvsignore $(BOOT).img
+	rm -f *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 .cvsignore $(BOOT).img $(EMPTYS)
 
 distrib: $(BASE).iso $(BOOT).img
 	rm -rf $(DEST)/$(DISTR_DIR)

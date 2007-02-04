@@ -1,3 +1,13 @@
+????-??-??
+
+    * Release of version d0.8a ()
+
+    * New:
+    - improved screensaver
+    - alternate way to call reset (for ISO ROM)
+    - can overwrite data on image (only color and monochrom screens for now)
+
+
 2006-12-17
 
     * Release of version d0.7b (JHcon 2006)
