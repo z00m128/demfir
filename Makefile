@@ -39,7 +39,7 @@ $(COMPILE): $(SOURCE) $(INCLUDES) Makefile
 	@echo
 	cat basic.tpi $(BASE).pat > $(COMPILE)
 	@echo
-	echo '.cvsignore *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 $(BOOT).img' $(EMPTYS) >.cvsignore
+	echo '.cvsignore *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 $(BOOT).img $(EMPTYS)' >.cvsignore
 	@echo
 
 em_mono.scr:

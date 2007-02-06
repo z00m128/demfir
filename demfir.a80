@@ -32,7 +32,7 @@
 		include "config.a80"
 
 ;DVERS	equ	"d0.7b"
-DVERS	equ	"70204"
+DVERS	equ	"70206"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -1983,13 +1983,14 @@ CAINIT2	ld	hl,0
 		ld	hl,CACHE
 		jr	CASPUKR
 
-CAWRITE	defb	62			;ld a,175
-CAREAD	xor	a
+;nastavi priznak "zapisuji", je teba ho nakonec
+;shodit (zavolat CAFLUSH), jinak to bude zapisovat porad!!!
+CAWRITE	ld	a,255
 		ld	(DOINGWR),a
 ;precte/ulozi BC bajtu od posledniho mista na/z adresu/y DE
 ;CARRY error
 ;DE ukazuje za nacteny blok (vzdycky???)
-		ld	hl,(CACHEREM)
+CAREAD	ld	hl,(CACHEREM)
 		ex	af,af'
 		ld	a,l
 		or	h
@@ -2030,7 +2031,9 @@ NOWR2	ldir
 		ex	de,hl
 ;ulozeni dat v cache
 		push	de
-		call	CAFLUSH
+		ld	de,CACHELBA
+		ld	hl,CACHE
+		call	RDWR1SEC
 		pop	de
 ;FIXME! test carry (bacha na zasobnik)
 ;posun se na dalsi sektor
@@ -2127,14 +2130,18 @@ NOWR6	ld	(CACHEKUR),hl
 
 ;ulozeni sektoru cache na disk
 ;FIXME! chtelo by to neplatna data (zbytek cache) vyplnit 0
-;(pak ovsem pozor na volani z CAWRITE)
+;pri upravach NEZAPOMENOUT nulovat (DOINGWR)
 CAFLUSH	ld	hl,(CACHEREM)
 		ld	a,l
 		or	h
-		ret	z			;pokud v cache nic neni tak neukladej
 		ld	de,CACHELBA
 		ld	hl,CACHE
-		jp	RDWR1SEC
+		call	nz,RDWR1SEC	;pokud v cache nic neni tak neukladej
+;test navratove hodnoty asi nema moc cenu, jenom to pripadne ohlasit
+;shozeni priznaku zapisu
+		xor	a
+		ld	(DOINGWR),a
+		ret
 
 
 ;preskoci DEBC bajtu od posledniho mista
@@ -3228,13 +3235,14 @@ IDEDTRD1	in	a,(RPARAM)
 		ret
 
 
-;precte jeden sektor na adresu HL
+;precte nebo zapise jeden sektor na adresu HL
 ;ukazatel na lba sektoru v DE
 RDWR1SEC	ld	a,1
 
-;precte A sektoru z cdrom na adresu HL
+;precte nebo zapise A sektoru z cdrom na adresu HL
 ;ukazatel na lba sektoru v DE
 ;navrat s carry kdyz chyba
+;PRIZNAK ZAPISU JE (DOINGWR)!!!
 RDWRSEC	push	hl
 		ex	af,af'
 		ex	de,hl
@@ -7362,9 +7370,9 @@ OVRSCR	push	bc
 		ld	de,16384
 		rst	40
 		defw	CAWRITE
+;FIXME! osetreni chyby pri zapisusu
 		rst	40
 		defw	CAFLUSH
-;FIXME! osetreni chyby pri zapisusu
 		xor	a
 		out	(254),a
 		jp	NEXTPG
