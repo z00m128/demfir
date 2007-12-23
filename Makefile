@@ -1,6 +1,6 @@
 SOURCE=demfir.a80
 BOOT=demfirboot
-EMPTYS=em_color.scr em_mono.scr
+EMPTYS=em_color.scr em_mono.scr em_48k.z80 em_128k.z80
 INCLUDES=config.a80 $(BOOT).a80 basic.tpi logo.pck logof6.pck logof6_2.pck spectrum.font didaktik.font 
 VERSION_LONG=$(shell grep "^DVERS" $(SOURCE)|cut -d \" -f 2)
 VERSION=$(shell echo $(VERSION_LONG)|tr -d .)
@@ -14,6 +14,9 @@ DISTR_DIR=$(SOURCE:%.a80=%-$(VERSION_LONG))
 DEST=../..
 
 all: $(BASE).iso
+
+$(BASE).hdf: $(BASE).iso
+	raw2hdf $(BASE).iso $(BASE).hdf
 
 eltorito: $(BOOT).img
 	mkisofs -U -V "DEMFIR $(VERSION_LONG) INSTALL" -b $(BOOT).img -c boot.catalog -hide $(BOOT).img -hide boot.catalog -o $(BASE).iso $(BOOT).img $(FILES)
@@ -48,6 +51,12 @@ em_mono.scr:
 em_color.scr:
 	dd if=/dev/zero of=em_color.scr bs=6912 count=1
 
+em_48k.z80:
+	dd if=/dev/zero of=em_48k.z80 bs=49216 count=1
+
+em_128k.z80:
+	dd if=/dev/zero of=em_128k.z80 bs=131151 count=1
+
 clean:
 	rm -f *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 .cvsignore $(BOOT).img $(EMPTYS)
 
@@ -57,7 +66,10 @@ distrib: $(BASE).iso $(BOOT).img
 	cp $(DOCS) $(SOURCE) $(INCLUDES) $(BOOT).img $(FILES) $(BASE).iso $(DEST)/$(DISTR_DIR)
 	cd $(DEST); tar zcvf $(DISTR_DIR).tar.gz $(DISTR_DIR)
 
-run: $(BASE).iso
+run_old: $(BASE).iso
 	ln -sf $(BASE).iso part1
 #	xspect -divide-image $(IMAGE0) ./ -quick-load devast_ide.tap
 	xspect -divide-image $(IMAGE0) ./
+
+run: $(BASE).hdf
+	fuse -m 128 --divide-write-protect --divide --rom-divide $(IMAGE0) $(BASE).hdf

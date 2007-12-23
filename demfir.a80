@@ -32,7 +32,7 @@
 		include "config.a80"
 
 ;DVERS	equ	"d0.7b"
-DVERS	equ	"70206"
+DVERS	equ	"70209"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -150,6 +150,9 @@ MFCHEAD	equ	55
 ;odtud zacina .mfc
 MFCSTART	equ	DRAMTOP-MFCHEAD
 
+;delka nekompripomovanych z80 (pro zapis)
+Z8048L	equ	49216
+Z80128L	equ	131151
 ;odtud zacina .z80
 Z80HDR1	equ	30
 Z80HDR2	equ	25
@@ -286,7 +289,7 @@ TMPDE	equ	AYREGS-2
 ;0=DI, 255=EI
 EIDI		equ	TMPDE-1
 
-;0=pri stisku nmi bylo im2
+;0=pri stisku NMI bylo IM2
 JEIM2	equ	EIDI-1
 
 ;cislo aktivni stranky pri nmi
@@ -322,7 +325,7 @@ INPSHFT	equ	TZXBPOS-1
 ;priznak ze se ma ukladat (malo registru)
 DOINGWR	equ	INPSHFT-1
 
-;stack pri nacitani snapu
+;stack pri nacitani/ukladani snapu
 LOADSTACK	equ	DOINGWR
 
 ENDVRS	equ	LOADSTACK-100
@@ -499,7 +502,7 @@ STOREINTE	push	hl
 		push	hl
 		push	de
 		push	bc
-		ex	af,af'		;v af` EIDI 
+		ex	af,af'		;v af` EI/DI 
 		push	af
 ;test modu preruseni
 		ld	hl,15104		;59*256
@@ -1973,6 +1976,14 @@ POPSCR	di
 
 
 ; ### OBSLUHA CACHE ###
+
+;nastaveni registru pro CAINIT (volano z vice mist)
+CAINI_IX	push	ix
+		pop	hl
+CAINI_HL	ld	de,7
+		add	hl,de
+;pokracuje dale!!! nic nepridavat
+
 ;inicializace cache
 ;HL ukazatel na LBA zacatku
 CAINIT	ld	de,CACHELBA
@@ -4271,23 +4282,7 @@ CRCOKR
 TRDOSWRAP
 		defb 256 dup (0)
 		jp	TOBASROM
-;fixme - presunout nekam pouzitelne
-
-
-BEF_SVBR
-;odchyceni save (jen pokracuje zpet v ZX ROM)
-		org	8192+$4C6
-		phase $4C6
-GAP_SVBR	equ	$-BEF_SVBR
-
-		ld	hl,$1F80
-;z puvodni ROM
-		push	hl
-		ld	hl,$4C6+3
-		ex	(sp),hl
-		jp	TOBASROM
-
-;konec odchyceni save
+;fixme - presunout nekam pouzitelne a pokud nakonec wrapper nebude tak generovat programove
 
 
 ;naboucha do AY data z (HL)
@@ -4320,6 +4315,49 @@ GETFILE	ld	a,(POZICE)
 		push	hl
 		pop	ix
 		ret
+
+;zjisteni adresy pripony
+;in: v hl adresa prvniho byte polozky
+;out: nz-soubor nema priponu
+;hl adresa posledni tecky
+;de adresa celeho jmena
+GETSUFF	ld	de,32
+		add	hl,de
+;uchovej si adresu jmena
+		ld	d,h
+		ld	e,l
+;najdi tecku (pripona)
+		ld	c,(hl)
+		ld	b,0
+		add	hl,bc
+		ld	b,c
+FINDOT	ld	a,(hl)
+		cp	'.'
+		ret	z
+		dec	hl
+		djnz	FINDOT
+;soubor nema tecku (neni pripona)
+		dec	b				;nz
+		ret
+
+
+BEF_SVBR
+;odchyceni save (jen pokracuje zpet v ZX ROM)
+		org	8192+$4C6
+		phase $4C6
+GAP_SVBR	equ	$-BEF_SVBR
+
+		ld	hl,$1F80
+;z puvodni ROM
+		push	hl
+		ld	hl,$4C6+3
+		ex	(sp),hl
+		jp	TOBASROM
+
+;tady nejspis bude emulace zapisu do tapky, takze sem nic nedavat
+
+;konec odchyceni save
+
 
 
 BEF_LDBR
@@ -5432,10 +5470,8 @@ NOTDIR
 		pop	hl
 ;v hl adresa polozky
 SCRSPOL	push	bc
-		ld	de,7
-		add	hl,de
 		rst	40
-		defw	CAINIT
+		defw	CAINI_HL
 SCRSPOL2	pop	bc
 		ld	de,16384
 		rst	40
@@ -5459,27 +5495,9 @@ NOTMSCR	ld	b,6912/256	;c=0
 		jr	SCRSPOL
 	endif	;WITH_SCR
 
-NOTASCR
-;zjisteni pripony
-		ld	de,32
-		add	hl,de
-;uchovej si adresu jmena
-		ld	d,h
-		ld	e,l
-;najdi tecku (pripona)
-		ld	c,(hl)
-		ld	b,0
-		add	hl,bc
-		ld	b,c
-FINDOT	ld	a,(hl)
-		cp	'.'
-		jr	z,ISDOT
-		dec	hl
-		djnz	FINDOT
-;soubor nema tecku (neni prip.)
-		jp	VYBERSM
-
-ISDOT	inc	hl
+NOTASCR	call	GETSUFF
+		jp	nz,VYBERSM		;soubor nema priponu
+		inc	hl
 ;adresa celeho jmena na zasob.
 		push	de
 		ld	de,EXTTAP
@@ -5633,15 +5651,15 @@ NOSEMIC
 ;schovej si delku tapky 2x (jednou pro sledovani konce a podruhe pro vypis v NMI menu)
 		push	ix
 		pop	hl
-		ld	bc,7
-		add	hl,bc
+		ld	de,7
+		add	hl,de
 		push	hl
 		rst	40
 		defw	CAINIT
 		pop	hl
 		ld	bc,3
 		add	hl,bc
-		inc	bc
+		inc	c
 		ld	de,TAPLEN2
 		push	hl
 		ldir
@@ -7257,13 +7275,8 @@ SNAPINIT	di
 		ld	a,16+64
 		out	(253),a
 ;v ix adresa cele polozky
-SNAPINIT2	push	ix
-		pop	hl
-;v hl adresa polozky
-		ld	de,7
-		add	hl,de
-		rst	40
-		defw	CAINIT
+SNAPINIT2	rst	40
+		defw	CAINI_IX
 		pop	de
 ;potrebujem hodnotu puvodniho zasobniku pro pripad, kdyz se budem chtit vratit
 ;pro 128k snap v 48k modu
@@ -7333,10 +7346,10 @@ IS48KMODE	ld	a,(ACTPAGE)
 ;prepis souboru
 OVRWRT	ld	a,(TAPACT)	;pro tapku ne
 		or	a
-		jr	nz,NOVRWRT
+		jp	nz,NOVRWRT
 		call	GETFILE
 		bit	1,(ix+25)
-		jr	nz,NOVRWRT	;pro adresar ne
+		jp	nz,NOVRWRT	;pro adresar ne
 	ifdef WITH_SCR
 ;detekce obrazku
 		ld	a,(ix+12)
@@ -7359,29 +7372,108 @@ OVRWRT	ld	a,(TAPACT)	;pro tapku ne
 ;zapisem jako barevny/monochromaticky obrazek (delka v BC)
 OVRSCR	push	bc
 		push	de
+;jakou VRAM?
+		ld	a,(ACTPAGE)
+		xor	8			;bit je opacne
+		and	128+8		;48K nebo 1.VRAM?
+		ld	hl,16384
+		jr	nz,OVRSCR1V
+		ld	h,192		;49152
+		ld	a,7+8+64		;7.page + 1.VRAM + kratky out
+		out	(253),a
+		jr	OVRSCR2V
+
+OVRSCR1V	push	hl
 		rst	40
 		defw	POPSCR
-		pop	de
-		ld	hl,7			;posun na lba v polozce
-		add	hl,de
+		pop	hl
+OVRSCR2V	ex	(sp),hl		;POP+PUSH HL
 		rst	40
-		defw	CAINIT
+		defw	CAINI_HL
+		pop	de
 		pop	bc
-		ld	de,16384
 		rst	40
 		defw	CAWRITE
-;FIXME! osetreni chyby pri zapisusu
+;FIXME! osetreni chyby pri zapisu
 		rst	40
 		defw	CAFLUSH
-		xor	a
-		out	(254),a
+		out	(254),a		;v a zustala 0
+		ld	a,(ACTPAGE)
+		and	127-8		;vzdy 1.VRAM
+		out	(253),a		;provede se i v 48K modu ale to by nemelo vadit
 		jp	NEXTPG
 
 NOVRSCRE	ex	de,hl
 	endif ;WITH_SCR
 
-NOVRSCR
+NOVRSCR	call	GETSUFF
+		jr	nz,NOVRWRT	;soubor nema priponu
+		inc	hl
 
+;sem pridat tapku (z80 be melo byt posledni v rade)
+
+	ifdef WITH_Z80
+;adresa celeho jmena na zasob.
+;		push	de
+		ld	de,EXTZ80
+		call	TESTPRIP
+;		pop	de
+		jr	nz,NOVRWRT
+		ld	a,(ACTPAGE)
+		ld	bc,Z8048L
+		ld	de,0
+		and	128				;48K mode?
+		jr	nz,OVRZ80_1
+		ld	bc,Z80128L#65536	;modulo
+		ld	e,Z80128L/65536	;v D je 0
+OVRZ80_1	ld	l,(ix+12)			;vyssi bajty
+		ld	h,(ix+13)
+		sbc	hl,de			;nc od and
+		jr	nz,NOVRWRT
+		ld	l,(ix+10)			;nizsi bajty
+		ld	h,(ix+11)
+		sbc	hl,bc			;nc od minuleho sbc
+		jr	nz,NOVRWRT
+;delka sedi, jdeme do toho
+		di
+		rst	40
+		defw	CAINI_IX
+;je teba vygenerovat prvnich 55 bytes (registry atd)
+;hack, nastrkame rovnou do cache (pozpatku :)
+		ld	de,CACHE+55
+		ld	(CACHEKUR),de
+		ld	hl,AYREGS+16
+		ld	bc,16
+		lddr
+		ex	de,hl
+		xor	a
+		ld	(hl),a			;last out to fffd (neumime)
+		dec	l
+		ld	(hl),3			;ldir and R emul. on
+		dec	l
+		ld	(hl),a			;no IF1
+		dec	l
+		ld	a,(ACTPAGE)
+		ld	c,a
+		and	127
+		ld	(hl),a			;last out to 7ffd
+		dec	l
+		ld	a,c
+		and	128
+		ld	a,3
+		jr	z,OVRZ80_2
+		xor	a
+OVRZ80_2	ld	(hl),a			;hw mode (0=48K ,3=128K)
+		dec	l
+
+
+
+
+
+
+
+		jp	NEXTPG
+	endif ;WITH_Z80
 
 NOVRWRT	rst	24
 		defb	22,23,0,17,0,16,2,18,1,19,1
@@ -7518,7 +7610,7 @@ BRPROG	defb	'7'
 		defb	15
 		defw	OVRWRT
 		defb	16
-		defw	NEXTPG		;"sezrani" SS+E
+		defw	VYBERSM		;"sezrani" SS+E
 		defb	' '
 		defw	RET2MAIN
 		defb	0
