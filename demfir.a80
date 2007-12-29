@@ -31,8 +31,8 @@
 
 		include "config.a80"
 
-;DVERS	equ	"d0.7b"
-DVERS	equ	"70209"
+;DVERS	equ	"d0.8a"
+DVERS	equ	"71231"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -325,8 +325,11 @@ INPSHFT	equ	TZXBPOS-1
 ;priznak ze se ma ukladat (malo registru)
 DOINGWR	equ	INPSHFT-1
 
+;priznak nevratneho prepsani RAM (spousteni fw, hrani .AY), quit pak dela reset
+NOQUIT	equ	DOINGWR-1
+
 ;stack pri nacitani/ukladani snapu
-LOADSTACK	equ	DOINGWR
+LOADSTACK	equ	NOQUIT
 
 ENDVRS	equ	LOADSTACK-100
 
@@ -1884,8 +1887,13 @@ DEMINT	xor	a
 		ld	(VALIDEV),a
 		jp	NMIMENU
 
-;navrat z nmi
-QUIT		ld	hl,AYREGS			;obnoveni registru AY
+;navrat z NMI menu, pokud byla RAM prepsana, dela se reset
+QUIT		ld	hl,NOQUIT
+		ld	a,(hl)
+		ld	(hl),0			;zruseni priznaku
+		or	a
+		jr	nz,RESET
+		ld	hl,AYREGS			;obnoveni registru AY
 ;naboucha do AY data z (HL)
 		ld	c,253
 		ld	de,16
@@ -4882,26 +4890,17 @@ VYBER	call	KURZOR
 FLPRM	call	GETFILE
 		rst	40
 		defw	FILEPARM
-VYBERSM
-		rst	40
+VYBERSM	rst	40
 		defw	INKEYS
 ;TRUE_VIDEO je prefix, ber dalsi znak jako znak pro hledani
 		cp	4
-		jr	nz,BROWKEYS
-		ld	a,1
-		out	(254),a
-		rst	40
-		defw	INKEYS
-		xor	a
-		out	(254),a
-		jp	FILEFIND
-
+		jr	z,FNDPRFX
 ;nejde pouzit to u NMI, jina ROM
 ;FIXME! nejak spojit s klavesami u pokemanageru
-BROWKEYS	ld	hl,BRPROG
+		ld	hl,BRPROG
 BRK1		ld	a,(hl)
 		or	a
-		jp	z,FILEFIND
+		jr	z,FILEFIND
 		cp	d
 		inc	hl
 		jr	z,BRK2
@@ -4915,6 +4914,136 @@ BRK2		ld	a,(hl)
 		ld	l,a
 		jp	(hl)
 
+FNDPRFX	ld	a,1
+		out	(254),a
+		rst	40
+		defw	INKEYS
+		xor	a
+		out	(254),a
+;sem nic nepridavat
+
+;hledani souboru psanim jeho jednotlivych znaku
+FILEFIND	ld	a,(TAPACT)
+		or	a
+		jr	nz,VYBERSM
+		ld	hl,FFCNT
+		ld	a,d
+		cp	12				;backspace
+		ld	a,(hl)
+		jr	nz,FLFND2
+		or	a
+		call	z,BEEPR
+		jr	z,VYBERSM
+		dec	(hl)
+		jp	CLSTATUS
+
+FLFND2	cp	12				;max. pocet znaku
+		call	nc,BEEPR
+		jr	nc,VYBERSM
+		ld	c,a
+		ld	b,0
+		inc	(hl)
+		ld	hl,INPBUFF
+		push	hl
+		pop	iy
+		add	hl,bc
+		ld	(hl),d
+		ld	a,2*8
+		push	bc
+		call	KURZORC
+		pop	bc
+		inc	c
+		call	SRCHFL
+		bit	7,b
+		jp	nz,NEXTPG
+;smazani spodniho radku
+CLSTATUS	rst	24
+		defb	22,23,128
+		rst	40
+		defw	SPACES
+		jp	VYBER
+
+
+;hledani souboru v aktualnim adresari podle jmena s ohledem na aktualni soubor
+;hleda nejblizsi podobny?
+;v IY adresa jmena pro hledani
+;v C delka jmena
+;po navratu 7.b reg B=1 znemana prekreslit stranku, jinak jenom info o souboru
+SRCHFL	call	GETFILE
+;aktualni soubor odpovida? pak neni potreba dal hledat
+;DE=index, HL=polozka, BC=delka hledani (B=0)
+		push	bc
+		push	de
+		call	NAMECMP
+		pop	hl
+		pop	bc
+		ret	z			;kdyz se rovnaji, finito
+		ld	a,(POZICE)	;stejne pro obe vetve
+		ld	b,a
+		jr	nc,SRCHDWN	;hledat dopredu nebo dozadu?
+;hledani smerem k prvni polozce
+SRCHUP	ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		dec	hl
+		dec	hl
+		dec	hl
+		push	hl
+		push	bc
+		ex	de,hl
+		call	NAMECMP
+		pop	bc
+		pop	hl
+		jr	nc,SRCHEND
+		dec	b
+		bit	6,b
+		jr	z,SRCHUP
+		push	bc
+		call	DOPGUP
+		pop	bc
+		jr	c,SRCHEND
+		ld	b,128+22
+		ld	hl,(VYPIS)
+		ld	de,22*2
+		add	hl,de
+		jr	SRCHUP
+
+SRCHEND	ld	a,b
+		and	127
+		ld	(POZICE),a
+		ret
+
+;hledani smerem k posledni polozce
+SRCHDWN	ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	a,(hl)			;konec adresare
+		inc	hl
+		or	(hl)
+		jr	z,SRCHEND
+		dec	hl
+		push	hl
+		push	bc
+		ex	de,hl
+		call	NAMECMP
+		pop	bc
+		pop	hl
+		jr	z,SRCHEND
+		jr	c,SRCHEND
+		inc	b
+		ld	a,b
+		and	127
+		cp	22
+		jr	c,SRCHDWN
+		push	bc
+		call	DOPGDW
+		pop	bc
+		jr	c,SRCHEND
+		ld	b,128
+		ld	hl,(VYPIS)
+		jr	SRCHDWN
+
 UP
 ;	ifdef WITH_SS
 ;		rst	32
@@ -4924,7 +5053,7 @@ UP
 		or	a
 		jr	nz,UP2
 		call	DOPGUP
-		jr	c,VYBERSM
+		jp	c,VYBERSM
 		ld	a,21
 		ld	(POZICE),a
 		jp	NEXTPG
@@ -4941,7 +5070,7 @@ UP2
 		ld	a,(hl)
 		dec	hl
 		or	(hl)
-		jr	z,VYBERSM
+		jp	z,VYBERSM
 		dec	b
 UDSPOL	ld	a,b
 		ld	(POZICE),a
@@ -5185,139 +5314,6 @@ DOPGDWY	dec	b
 		or	a
 		ret
 
-;hledani souboru psanim jeho jednotlivych znaku
-FILEFIND	ld	a,(TAPACT)
-		or	a
-		jp	nz,VYBERSM
-		ld	hl,FFCNT
-		ld	a,d
-		cp	12				;backspace
-		ld	a,(hl)
-		jr	nz,FLFND2
-		or	a
-		call	z,BEEPR
-		jp	z,VYBERSM
-		dec	(hl)
-		jp	CLSTATUS
-
-FLFND2	cp	12				;max. pocet znaku
-		call	nc,BEEPR
-		jp	nc,VYBERSM
-		ld	c,a
-		ld	b,0
-		inc	(hl)
-		ld	hl,INPBUFF
-		add	hl,bc
-		ld	(hl),d
-;samotne hledani
-;aktualni soubor odpovida? pak neni potreba dal hledat
-		call	GETFILE
-;DE=index, HL=polozka, BC=delka hledani (B=0)
-		push	bc
-		push	de
-		call	BUFFCMP
-		pop	hl
-		pop	bc
-		jp	z,CLSTATUS	;kdyz se rovnaji, finito
-		jr	nc,SRCHDWN	;hledat dopredu nebo dozadu?
-
-;hledani smerem k prvni polozce
-;hloupate linearni prohledavani, vzhledem ke strukture ISO9660 asi nic
-;chytrejsiho nepujde :(
-SRCHUP	ld	a,2*8
-		push	bc
-		call	KURZORC
-		pop	bc
-		ld	a,(POZICE)
-		ld	b,a
-SRCHUP2
-		ld	e,(hl)
-		inc	hl
-		ld	d,(hl)
-		dec	hl
-		dec	hl
-		dec	hl
-		push	hl
-		push	bc
-		ex	de,hl
-		call	BUFFCMP
-		pop	bc
-		pop	hl
-		jr	nc,SRCHUP3
-		dec	b
-		bit	6,b
-		jr	z,SRCHUP2
-		push	bc
-		call	DOPGUP
-		pop	bc
-		jr	c,SRCHUP3
-		ld	b,128+22
-		ld	hl,(VYPIS)
-		ld	de,22*2
-		add	hl,de
-		jr	SRCHUP2
-
-SRCHUP3	ld	a,b
-		and	127
-		ld	(POZICE),a
-		bit	7,b
-		jp	z,CLSTATUS
-		jp	NEXTPG
-
-
-;hledani smerem k posledni polozce
-;hloupate linearni prohledavani, vzhledem ke strukture ISO9660 asi nic
-;chytrejsiho nepujde :(
-SRCHDWN	ld	a,2*8
-		push	bc
-		call	KURZORC
-		pop	bc
-		ld	a,(POZICE)
-		ld	b,a
-SRCHDWN2	ld	e,(hl)
-		inc	hl
-		ld	d,(hl)
-		inc	hl
-		ld	a,(hl)			;konec adresare
-		inc	hl
-		or	(hl)
-		jr	z,SRCHDWN3
-		dec	hl
-		push	hl
-		push	bc
-		ex	de,hl
-		call	BUFFCMP
-		pop	bc
-		pop	hl
-		jr	z,SRCHDWN3
-		jr	c,SRCHDWN3
-		inc	b
-		ld	a,b
-		and	127
-		cp	22
-		jr	c,SRCHDWN2
-		push	bc
-		call	DOPGDW
-		pop	bc
-		jr	c,SRCHDWN3
-		ld	b,128
-		ld	hl,(VYPIS)
-		jr	SRCHDWN2
-
-SRCHDWN3	ld	a,b
-		and	127
-		ld	(POZICE),a
-		bit	7,b
-		jp	z,CLSTATUS
-		jp	NEXTPG
-
-;smazani spodniho radku
-CLSTATUS	rst	24
-		defb	22,23,128
-		rst	40
-		defw	SPACES
-		jp	VYBER
-
 ;vybran nejaky soubor
 ENTER
 ;	ifdef WITH_SS
@@ -5500,6 +5496,133 @@ NOTASCR	call	GETSUFF
 		inc	hl
 ;adresa celeho jmena na zasob.
 		push	de
+		ld	de,EXTDFW
+		call	TESTPRIP
+		pop	de
+		jp	nz,NENIDFW
+;nacteni, umisteni a spusteni jineho firmware (mdos3, fatware, atd)
+		rst	40
+		defw	CLS
+		ld	hl,32768
+		ld	c,l
+		ld	b,h				;plni o 1 B vice, ale tady to nevadi
+		ld	a,l				;v L je 0
+		rst	40
+		defw	FILLBYTE
+		dec	a				;=255
+		ld	(NOQUIT),a		;RAM je prepsana, neni mozne se vratit
+		call	RD1ST2CCH			;v HL je CACHE
+;rozebrani .dfw souboru, jedeme radek po radku
+DFWREAD	ld	a,(hl)
+		cp	'E'
+		jr	z,FWSTART
+		cp	'P'
+		jr	nz,DFWINVAL
+		inc	hl
+		call	ATOI
+		ld	a,(hl)
+		cp	' '
+		jr	nz,DFWINVAL
+		ld	a,c
+		inc	hl
+		ex	de,hl
+		ld	hl,32768
+		and	3				;pouze 0-3
+		jr	z,DFWRDJP1
+		ld	bc,8192
+DFWRDSM1	add	hl,bc
+		dec	a
+		jr	nz,DFWRDSM1
+DFWRDJP1	ex	de,hl
+		push	de				;adresa kam nahrat
+		push	hl
+		call	STRLEN
+		pop	iy				;zacatek jmena souboru
+		ex	(sp),hl			;na zasobnik konec jmena, do HL adresa kam nahrat
+		push	hl
+		push	bc
+		call	SRCHFL			;hledani souboru
+;hledani vraci priblizny soubor, takze finalni kontrola
+		call GETFILE
+		pop	bc
+		push	bc
+		call NAMECMP
+		pop	bc
+		jr	nz,DFWNOTF
+;pro jistotu zkotrolujeme i delky jmena
+		ld	a,c
+		cp	(ix+32)
+		jr	nz,DFWNOTF
+;a delku souboru
+		ld	a,(ix+12)
+		or	(ix+13)
+		or	(ix+10)
+		jr	nz,DFWNOTF
+		ld	a,(ix+11)
+		cp	32				;32*256=8192
+		jr	nz,DFWNOTF
+		push	ix
+		pop	hl
+		ld	de,7
+		add	hl,de
+		ex	de,hl
+		pop	hl
+		ld	a,4
+		rst	40
+		defw	RDWRSEC
+		jr	c,DFWNOTF2
+		pop	hl
+;HL za poslednim znakem jmena (LF)
+;rovnou preskocime a hledame dalsi platny znak
+DFWRDSM2	inc	hl
+		ld	a,(hl)
+		cp	10
+		jr	z,DFWRDSM2
+		cp	13
+		jr	z,DFWRDSM2
+		jr	DFWREAD
+
+;preneseni "rozhazovaci" rutiny a jeji spusteni
+FWSTART	ld	hl,FWINSTALL
+		ld	de,SNATMP
+		ld	bc,FWIEND-FWINSTALL
+		push	de
+		ldir
+		ret					;na zasobniku je SNATMP
+
+;chyba ve formatu souboru
+DFWINVAL	rst	24
+		defb	22,12,7,17,0,16,2,18,1,19,1
+		defb	"Invalid .DFW file!"
+		defb	19,0,18,128
+DFWESP	rst	40
+		defw	INKEYS		;cekme na klavesu
+		jp	NEXTPG
+
+DFWNOTF	pop	hl
+DFWNOTF2	pop	hl
+		rst	24
+		defb	22,12,0,17,0,16,2,18,1,19,1
+		defb	"File not found (or wrong lenght)"
+		defb	19,0,18,128
+		jr	DFWESP
+		
+FWINSTALL	ld	hl,65535
+		ld	a,3+CONMEM
+FWISM	ld	de,16383
+		ld	bc,8192
+		out	(RAMPORT),a		;radeji vlastni strankovani
+		lddr					;bratri zpatecnici
+		dec	a
+		bit	6,a				;"podteceni" (CONMEM je 128)
+		jr	z,FWISM
+		ld	a,MAPRAM
+		out	(RAMPORT),a		;zruseni CONMEM
+		rst	0				;nahozeni noveho FW
+FWIEND
+
+
+NENIDFW	push	de
 		ld	de,EXTTAP
 		call	TESTPRIP
 		pop	de
@@ -5958,13 +6081,8 @@ TZXBODY2	ld	(hl),a
 		jp	c,TAPFAIL2
 		jp	MKTZXIND
 
-
-NENITZX
-	ifdef WITH_POK
-		ld	de,EXTPOK
-		call	TESTPRIP
-		jp	nz,NENIPOK
-		push	ix
+;nacte prvni sektor souboru do cache
+RD1ST2CCH	push	ix
 		pop	hl
 ;v hl adresa polozky
 		ld	de,7
@@ -5975,9 +6093,17 @@ NENITZX
 		push	hl
 		rst	40
 		defw	RDWR1SEC
+		pop	hl
+		ret
+
+NENITZX
+	ifdef WITH_POK
+		ld	de,EXTPOK
+		call	TESTPRIP
+		jp	nz,NENIPOK
+		call	RD1ST2CCH
 ;bylo by dobre zneplatnit data o poke?
 ;rozebrani .pok souboru
-		pop	hl
 		ld	ix,POKTAB
 		ld	de,POKDATA
 		ld	a,25				;max pocet "traineru" + 1
@@ -7540,17 +7666,13 @@ STRNICMP	ld	a,(de)
 		djnz	STRNICMP
 		ret
 
-BUFFCMP	ld	de,INPBUFF
+;vypocet a nasledne porovnani jmena polozky v HL a retezce v (IY)
 NAMECMP	ld	a,c
-		ld	bc,32
+		ld	bc,33
 		add	hl,bc
-;porovnani delek, kdyz je jmeno kratsi, nema cenu dal hledat
-		cp	(hl)
-		ret	nc
-		inc	a			;delka v bufferu je o 1 mensi
 		ld	b,a
-		inc	hl
-;		jr	STRNCMP
+		push	iy
+		pop	de
 ;sem nic nepridavat
 
 ;porovna 2 retezce (DE a HL) v delce B bytu
@@ -7564,7 +7686,21 @@ STRNCMP	ld	a,(de)
 		djnz	STRNCMP
 		ret
 
+;vrati delku retezce na ktery ukazuje HL,
+;bere v uvahu pouze znaky 32-127
+;navrat s BC=pocet znaku
+STRLEN	ld	bc,0
+STRLEN2	ld	a,(hl)
+		bit	7,a
+		ret	nz
+		cp	32
+		ret	c
+		inc	hl
+		inc	bc
+		jr	STRLEN2
 
+
+EXTDFW	defb "dfw"
 EXTTAP	defb	"tap"
 EXTTZX	defb	"tzx"
 	ifdef WITH_SNA

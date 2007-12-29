@@ -1,6 +1,7 @@
 SOURCE=demfir.a80
 BOOT=demfirboot
 EMPTYS=em_color.scr em_mono.scr em_48k.z80 em_128k.z80
+FIRMWARES=firmwares/
 INCLUDES=config.a80 $(BOOT).a80 basic.tpi logo.pck logof6.pck logof6_2.pck spectrum.font didaktik.font 
 VERSION_LONG=$(shell grep "^DVERS" $(SOURCE)|cut -d \" -f 2)
 VERSION=$(shell echo $(VERSION_LONG)|tr -d .)
@@ -8,7 +9,7 @@ BASE=$(SOURCE:%.a80=%$(VERSION))
 COMPILE=$(BASE).tap
 IMAGE0=$(BASE)_E.bin
 IMAGE1=$(BASE)_R.bin
-FILES=$(COMPILE) $(IMAGE0) $(IMAGE1) $(EMPTYS) #devast_ide.tap
+FILES=$(COMPILE) $(IMAGE0) $(IMAGE1) $(EMPTYS)#devast_ide.tap
 DOCS=AUTHORS BUGS* ChangeLog* INSTALL* LICENSE Makefile README* TODO*
 DISTR_DIR=$(SOURCE:%.a80=%-$(VERSION_LONG))
 DEST=../..
@@ -21,8 +22,8 @@ $(BASE).hdf: $(BASE).iso
 eltorito: $(BOOT).img
 	mkisofs -U -V "DEMFIR $(VERSION_LONG) INSTALL" -b $(BOOT).img -c boot.catalog -hide $(BOOT).img -hide boot.catalog -o $(BASE).iso $(BOOT).img $(FILES)
 
-$(BASE).iso: $(FILES)
-	mkisofs -U -V "DEMFIR $(VERSION_LONG) INSTALL" -G $(IMAGE1) -o $(BASE).iso $(FILES)
+$(BASE).iso: $(FILES) $(FIRMWARES)*
+	mkisofs -U -V "DEMFIR $(VERSION_LONG) INSTALL" -G $(IMAGE1) -o $(BASE).iso -graft-points $(FIRMWARES)=$(FIRMWARES) $(FILES)
 
 $(BOOT).img: $(FILES) $(BOOT).a80 Makefile
 	ln -sf $(IMAGE1) demfir_R.bin
@@ -42,7 +43,7 @@ $(COMPILE): $(SOURCE) $(INCLUDES) Makefile
 	@echo
 	cat basic.tpi $(BASE).pat > $(COMPILE)
 	@echo
-	echo '.cvsignore *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 $(BOOT).img $(EMPTYS)' >.cvsignore
+	echo '.cvsignore *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 $(BOOT).img $(EMPTYS)' $(FIRMWARES) >.cvsignore
 	@echo
 
 em_mono.scr:
@@ -58,7 +59,7 @@ em_128k.z80:
 	dd if=/dev/zero of=em_128k.z80 bs=131151 count=1
 
 clean:
-	rm -f *.bin demfir*.tap *.p *.err *.lst *.pat *.iso part1 .cvsignore $(BOOT).img $(EMPTYS)
+	rm -f *.bin demfir*.tap *.p *.err *.lst *.pat *.iso *.hdf part1 .cvsignore $(BOOT).img $(EMPTYS)
 
 distrib: $(BASE).iso $(BOOT).img
 	rm -rf $(DEST)/$(DISTR_DIR)
