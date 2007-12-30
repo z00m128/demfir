@@ -141,6 +141,7 @@ V druhém øádku je seznam podporovaných formátù
 - MFC = snapy MFC, povoluje WITH_MFC v config.a80
 - SCR = prohlí¾eè obrázkù, povoluje WITH_SCR v config.a80
 - POK = PokeManager, povoluje WITH_POK v config.a80
+- DFW = DivIDE FirmWare, soubor pro instalaci jinych firmware do MAPRAMu
 
 Ve tøetím øádku jsou ostatní moduly a nastavení
 - CHS = podpora pro HDD bez LBA, povoluje WITH_CHS v config.a80
@@ -202,6 +203,14 @@ PokeManager
   - Pøi ka¾dém vyvolání PokeManageru jsou znovu kontrolovány údaje v pamìti
     a pokud aplikujete "èervený" cheat, pøi dal¹ím vyvolání u¾ z nìj bude
     "zelený", nebo» data v pamìti budou sedìt.
+
+Popis formátu souboru pro instalaci jiných firmwarù (.dfw)
+Ka¾dá øádka zaèínající písmenem P je jedna RAM stránka divIDE spoleènì se
+jménem souboru který do ní nahrát (hledá se v aktuálním adresáøi a není mo¾né
+zadat cestu). Øádka musí vypadat následovnì:
+Pèíslostránky jménosouboru
+Øádka zaèínající písmenem E znamená konec seznamu.
+Více viz. firmwares/*.dfw
 
 
     Tritol

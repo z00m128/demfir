@@ -6,6 +6,7 @@
     - vylep¹ený "spoøiè obrazovky"
     - alternativní zpùsob volání resetu (kùli ISO ROM)
     - umí pøepisovat data v image (zatím pouze barevné a monochromatické obrázky)
+    - umí nainstalovat jiný firmware do MAPRAM (soubory .dfw)
 
 
 2006-12-17

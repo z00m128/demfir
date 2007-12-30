@@ -136,6 +136,7 @@ Second line shows list of supported formats
 - MFC = MFC snaps, enabled by WITH_MFC in config.a80
 - SCR = picture viewer, enabled by WITH_SCR in config.a80
 - POK = PokeManager, enabled by WITH_POK in config.a80
+- DFW = DivIDE FirmWare, file for other firmware MAPRAM installation
 
 Third line shows other modules and settings
 - CHS = support for HDD without LBA, enabled by WITH_CHS in config.a80
@@ -193,6 +194,14 @@ PokeManager
   - All values are checked every time PokeManager is entered. If you turn on or
     off any "red" cheat another PokeManager call it turns to "green" one
     because values in RAM will be alright.
+
+Firmware installation file (.dfw) description
+Each line started with letter P mean one divIDE RAM page together with file
+name which should be loaded into it (file is searched in actual directory and
+path can't be specified). Line must have this format:
+Ppagenumber filename
+Line started with letter E means end of list.
+See firmwares/*.dfw
 
 
     Tritol

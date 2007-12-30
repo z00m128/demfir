@@ -1570,6 +1570,7 @@ INFO4	rst	16
 	ifdef WITH_POK
 		defb "POK "
 	endif
+		defb "DFW "
 		defb	13				;moduly a ficury
 	ifdef WITH_CHS
 		defb "CHS "
