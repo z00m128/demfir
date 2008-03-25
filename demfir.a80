@@ -32,7 +32,7 @@
 		include "config.a80"
 
 ;DVERS	equ	"d0.8a"
-DVERS	equ	"71231"
+DVERS	equ	"80324"
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -243,9 +243,28 @@ TAPCURS	equ	TAPLEN2-2
 POZBAK	equ	TAPCURS-1
 ;kde v indexu (backup)
 VYPBAK	equ	POZBAK-2
+;pocet polozek v tapce
+TAPITEMS	equ	VYPBAK-2
+
+;parametry zapisovaci tapky
+;zapisujeme do tapky
+TAPSACT	equ	TAPITEMS-1
+;jmeno tapky pro zapis
+TAPSNAME	equ	TAPSACT-32
+;musi byt v tomto poradi (TAPSLEN, TAPSREM a TAPSLBA)
+;celkova delka tapky (souboru)
+TAPSLEN	equ	TAPSNAME-4
+;zbyvajici misto v tapce (ubyva se zapisem)
+TAPSREM	equ	TAPSLEN-4
+;sektor kam ukladat
+TAPSLBA	equ	TAPSREM-3
+;pozice v ukladanem sektoru
+TAPSPOS	equ	TAPSLBA-2
+;pocat polozek v ukladaci tapce
+TAPSITEMS	equ	TAPSPOS-2
 
 ;pozice v cache (lze dopocitat, ale tohle je rychlejsi)
-CACHEKUR	equ	VYPBAK-2
+CACHEKUR	equ	TAPSITEMS-2
 ;aktualne nacteny sektor
 CACHELBA	equ	CACHEKUR-3
 ;kolik B z nej je jeste k disp.
@@ -681,13 +700,6 @@ XORPAGE2	ld	a,(de)
 		ld	(de),a
 		ret
 
-;vytiskne 32 mezer
-SPACES	ld	b,32
-SPACES1	ld	a,32
-		rst	16
-		djnz	SPACES1
-		ret
-
 ;smaze celou RAM stranku (vyplni 0)
 ;v A je cislo stranky
 CLRPG	rst	48
@@ -792,7 +804,7 @@ PROHOD1
 		ret
 
 
-;vytiskne delku v HLDE
+;vytiskne delku v DEHL
 ;v A znak pro tisk nevyznamnych nul, 0=netisknout
 ;tiskne jednotku (B/K/M), v c vraci desetiny
 PRSIZE	ld	bc,'B'*256+0
@@ -1395,7 +1407,7 @@ MEMCMP	ld	a,(de)
 		ret
 
 
-;fixme! spousta mista tu je
+;FIXME! spousta mista tu je
 
 
 
@@ -1527,11 +1539,10 @@ INFO2	rst	16
 		ld	b,a
 		bit	7,a
 		ld	hl,128
-		ld	c,0
 		jr	z,INFO3
 		ld	l,48
-		ld	b,c				;vynulujem cislo stranky, nema smysl
-INFO3	call	PRINTHL2
+		ld	b,0				;vynulujem cislo stranky, nema smysl
+INFO3	call	PRINTHLX
 		rst	24				;call PRINTSP
 		defb 'K',16,6			;yellow
 		defb " Page:"
@@ -1593,9 +1604,9 @@ INFO4	rst	16
 		or	a
 		jp	nz,INITD2
 		rst	24				;call PRINTSP
-		defb	22,3,26,16,2
+		defb	22,3,27,16,2
 DVRSN	defb	DVERS
-		defb	22,17,0,18,1
+		defb	22,14,0,18,1
 		defb	" Detecting devices, please wait "
 		defb	18,128
 		xor	a
@@ -1609,9 +1620,6 @@ DVRSN	defb	DVERS
 		ei
 		call	NOSIFR
 		di
-		rst	24				;call PRINTSP
-		defb	22,17,128
-		call	SPACES
 		xor	a
 NEWMED2	ld	(DEVICE),a
 NEWMED	ld	hl,0
@@ -1620,14 +1628,17 @@ NEWMED	ld	hl,0
 NEWMED3	xor	a
 		ld	(DISKNAME),a
 		ld	(TAPACT),a
+		ld	(TAPSACT),a
 		ld	(DISKACT),a
-;smaz radek "medium"
-		rst	24				;call PRINTSP
-		defb	22,17,128
-		call	SPACES
+		ld	(DOINGWR),a
+;"castecne cls" (informace o mediu atd)
+		ld	hl,11*32+22528
+		ld	bc,10*32+31
+		xor	a
+		call	FILLBYTE
 INITD2	rst	24				;call PRINTSP
 		defb	16,6
-		defb	22,15,0
+		defb	22,11,0
 		defb	20,1,"D",20
 		defb	0
 		defb	"evice:",' '+128
@@ -1671,31 +1682,17 @@ INITD3X
 		call	PRINTB
 		rst	24				;call PRINTSP
 		defb	16,6
-		defb	13,20,1,"M",20,0
+		defb	13,13,20,1,"M",20,0
 		defb	"edium: "
 		defb	16,3+128
-		ld	a,(TAPACT)
-		or	a
-		jr	z,MEDNOTP
-		ld	hl,(TAPLEN2)
-		ld	de,(TAPLEN2+2)
-		xor	a
-		call	PRSIZE
-		rst	24				;call PRINTSP
-		defb	13,16,5+128
-		ld	hl,TAPNAME
-		jp	SPOLMED2
-
-MEDNOTP	call	GETPARAM
+		call	GETPARAM
 		call	GETPVD
 		ld	a,(DISKNAME)
 		or	a
 		jr	nz,JEMEDIUM
 		rst	24				;call PRINTSP
 		defb	6,16,2
-		defb	"<no ISO 9660>  "
-		defb	13+128
-		call	SPACES
+		defb	"<no ISO 9660>  ",13+128
 		jr	SPOLMED
 
 JEMEDIUM
@@ -1722,11 +1719,10 @@ JEMEDIUM
 		xor	a
 		call	PRSIZE
 		rst	24				;call PRINTSP
-		defb	22,17,16,16,4+128
+		defb	22,14,16,16,4+128
 		ld	a,(MEDSIZE+7)
-		cp	3
+		cp	3				;real CDROM?
 		jr	c,EMULMED
-;cdrom
 		rst	24				;call PRINTSP
 		defb	16,4
 		defb	"<real CD-ROM> ",' '+128
@@ -1741,13 +1737,75 @@ SPOLMED2	ld	b,32
 		ld	a,(GPART2)
 		or	a
 		call	z,DASBOOT			;pokusime se nacist druhou cast
-SPOLMED	ld	a,16
+SPOLMED
+		rst	24
+		defb	13,13,16,6,"Load: ",16,3+128
+		ld	a,(TAPACT)
+		or	a
+		jr	z,LDTAPE
+		ld	hl,(TAPLEN2)
+		ld	de,(TAPLEN2+2)
+		xor	a
+		call	PRSIZE
+		rst	24				;call PRINTSP
+		defb	6,16,4+128
+		ld	hl,(TAPCURS)
+		ld	de,INDEX+2
+		or	a
+		sbc	hl,de
+		srl	h
+		rr	l
+		call	PRINTHLX
+		ld	a,'/'
+		rst	16
+		ld	hl,(TAPITEMS)
+		call	PRINTHLX
+		rst	24				;call PRINTSP
+		defb	13,16,5+128
+		ld	b,32
+		ld	hl,TAPNAME
+		call	PRINTB
+		jr	SAPRINT
+
+LDTAPE	rst	24
+		defb	13,16,5,"<real tape",'>'+128
+
+SAPRINT	rst	24
+		defb	13,13,16,6,"Save: ",16,3+128
+		ld	a,(TAPSACT)
+		or	a
+		jr	z,SATAPE
+		ld	hl,(TAPSLEN)
+		ld	de,(TAPSLEN+2)
+		xor	a
+		call	PRSIZE
+		rst	24				;call PRINTSP
+		defb	6,16,4+128
+		ld	hl,(TAPSITEMS)
+		call	PRINTHLX
+		ld	a,'/'
+		rst	16
+		ld	hl,(TAPSREM)
+		ld	de,(TAPSREM+2)
+		xor	a
+		call	PRSIZE
+		rst	24
+		defb	13,16,5+128
+		ld	b,32
+		ld	hl,TAPSNAME
+		call	PRINTB
+		jr	HELPMENU
+
+SATAPE	rst	24
+		defb 13,16,5,"<real tape>",' '+128
+
+HELPMENU	ld	a,16
 		rst	16
 		ld	a,(GPART2)
 		add	a,2				;red or green
 		rst	16
 		rst	24
-		defb 22,3,26
+		defb 22,3,27
 		defb	DVERS
 		defb	22,23,0,16,6
 		defb	20,1,"R",20,0
@@ -1808,7 +1866,7 @@ NMIK3	ld	a,(hl)
 ;		call	ATAPICOM
 ;		jp	NEWMED
 
-NOMED	ld	hl,15*32+22528+16
+NOMED	ld	hl,11*32+22528+16
 		ld	bc,13
 FLASH	push	hl
 		push	bc
@@ -1863,7 +1921,7 @@ ENTBROWS2	ld	a,(DISKNAME)
 		defw	CDBROWS
 		jp	NMIMENU
 
-NOENT	ld	hl,17*32+22528+16
+NOENT	ld	hl,14*32+22528+16
 		ld	bc,12
 		jr	FLASH
 
@@ -1878,8 +1936,7 @@ ENTPOKMAN	ld	a,(GPART2)
 	endif
 
 ;change device (master/slave)
-CHDEV
-		ld	a,(DEVICE)
+CHDEV	ld	a,(DEVICE)
 		xor	16
 		jp	NEWMED2
 
@@ -2003,14 +2060,15 @@ CAINIT2	ld	hl,0
 		ld	hl,CACHE
 		jr	CASPUKR
 
-;nastavi priznak "zapisuji", je teba ho nakonec
-;shodit (zavolat CAFLUSH), jinak to bude zapisovat porad!!!
-CAWRITE	ld	a,255
-		ld	(DOINGWR),a
+;nastavi priznak "zapisuji"
+;ld a,
+CAWRITE	defb	62
 ;precte/ulozi BC bajtu od posledniho mista na/z adresu/y DE
 ;CARRY error
 ;DE ukazuje za nacteny blok (vzdycky???)
-CAREAD	ld	hl,(CACHEREM)
+CAREAD	xor	a
+		ld	(DOINGWR),a
+		ld	hl,(CACHEREM)
 		ex	af,af'
 		ld	a,l
 		or	h
@@ -2150,7 +2208,6 @@ NOWR6	ld	(CACHEKUR),hl
 
 ;ulozeni sektoru cache na disk
 ;FIXME! chtelo by to neplatna data (zbytek cache) vyplnit 0
-;pri upravach NEZAPOMENOUT nulovat (DOINGWR)
 CAFLUSH	ld	hl,(CACHEREM)
 		ld	a,l
 		or	h
@@ -2158,11 +2215,10 @@ CAFLUSH	ld	hl,(CACHEREM)
 		ld	hl,CACHE
 		call	nz,RDWR1SEC	;pokud v cache nic neni tak neukladej
 ;test navratove hodnoty asi nema moc cenu, jenom to pripadne ohlasit
-;shozeni priznaku zapisu
+;shozeni priznaku "zapis"
 		xor	a
-		ld	(DOINGWR),a
+		ld	(DOINGWR),a	
 		ret
-
 
 ;preskoci DEBC bajtu od posledniho mista
 ;zatim vyuzivano pouze pro TZX
@@ -2257,6 +2313,13 @@ CASK3	push	hl
 		or	a
 		ret
 
+;vzpamatovani po resetu
+WAKEUP	ld	a,(DEVICE)
+		and	16
+		ld	ix,MAS_NAME
+		jr	z,GETREADY
+		ld	ix,SLA_NAME
+;linearne pokracuje, nic sem nepridavat!
 
 ;zjisti stav zarizeni
 GETREADY	ld	a,(ix+33)
@@ -3505,6 +3568,8 @@ PRINTL2	ld	c,'0'
 PRINTL3	ld	c,'0'
 		ld	h,0
 		jr	PRINTL
+PRINTHLX	ld	c,0
+		defb	17			;ld DE, (skip)
 PRINTHL	ld	c,' '
 PRINTHL2	ld	de,10000
 		call	DIGIT
@@ -3966,7 +4031,7 @@ FONT		equ	8192-1024
 LOGO		equ	FONT-36
 		org	LOGO
 		rst	24				;call PRINTSP
-		defb 22,8,2,16,3,19,1
+		defb 22,7,2,16,3,19,1
 		defb "DTP's Emulator Files Runne",'r'+128
 		ret
 	endif
@@ -4350,23 +4415,186 @@ FINDOT	ld	a,(hl)
 		ret
 
 
+;druha cast ukladani do tapky
+TSEPT2
+		push	bc
+TSECRC	xor	(hl)
+		cpi						;inc hl, dec bc a bc==0? najednou :)
+		jp	pe,TSECRC
+		push	hl
+;ulozeni crc
+		ld	(de),a
+		ld	bc,1
+		rst	40
+		defw	CAWRITE
+;zapamatovani si aktualnich hodnot ukazatelu do cache (bez konce tapky)
+		ld	hl,CACHELBA
+		ld	de,TAPSLBA
+		ld	bc,3
+		ldir
+;		call	DECLBA
+;		ld	(hl),a
+;		inc	hl
+;		ld	(hl),d
+;		inc	hl
+;		ld	(hl),e
+		ld	hl,(CACHEKUR)
+		ld	bc,CACHE
+		or	a
+		sbc	hl,bc
+		ld	(TAPSPOS),hl
+;ulozeni konce tapky (delka bloku=0)
+		ld	de,TZXBUFF+1
+		xor	a
+		ld	(de),a
+		dec	e
+		ld	(de),a
+		ld	bc,2
+		rst	40
+		defw	CAWRITE
+		rst	40
+		defw	CAFLUSH
+;aktualizace ukazatelu
+;a obnoveni hodnot po jako uspesnem konci
+		ld	hl,(TAPSITEMS)
+		inc	hl
+		ld	(TAPSITEMS),hl
+		pop	ix
+		pop	hl
+		ld	bc,6
+		add	hl,bc
+		ld	b,h
+		ld	c,l
+		ld	hl,(TAPSREM)
+		sbc	hl,bc				;NC od add
+		ld	(TAPSREM),hl
+		jr	nc,TSEEND
+		ld	hl,(TAPSREM+2)
+		dec	hl
+		ld	(TAPSREM+2),hl
+TSEEND	jp	TPRET
+
+;chyba
+TSERROR	call	BEEPR
+		pop	hl
+		pop	ix
+		pop	de
+		ld	a,(hl)
+		jp	ROMSRAM
+
+
+
 BEF_SVBR
 ;odchyceni save (jen pokracuje zpet v ZX ROM)
 		org	8192+$4C6
 		phase $4C6
 GAP_SVBR	equ	$-BEF_SVBR
 
-		ld	hl,$1F80
+SA_BYTES	ld	hl,$1F80
 ;z puvodni ROM
+		push af
+		xor	a
+		out	(RAMPORT),a			;potrebujem zachovat HL
+		ld	a,(TAPSACT)
+		or	a
+		jr	nz,TSEMUL
+;neni vybrana zadna tapka
+;vrat se do normalniho sa-bytes
+		pop	af
 		push	hl
-		ld	hl,$4C6+3
+		ld	hl,SA_BYTES+3
 		ex	(sp),hl
-		jp	TOBASROM
+		jp	ROMSRAM
 
-;tady nejspis bude emulace zapisu do tapky, takze sem nic nedavat
+;emulace zapisu do tapky (prepis)
+TSEMUL	di
+;zjistime jestli se jeste vejdem
+		ex	de,hl				;+2 delka bloku, +1 flagbyte, +1 crc, +2 konec tapky (delka=0)
+		ld	bc,6
+		add	hl,bc
+		ex	de,hl
+		ld	hl,(TAPSREM+2)
+		ld	a,h
+		or	l
+		jr	nz,TSEMUL2			;vic nez 64 KB
+		ld	hl,(TAPSREM)
+		sbc	hl,de				;NC od add
+		jr	nc,TSEMUL2
+;nevejdem se, vratime puvodni hodnoty
+		ex	de,hl
+		or	a
+		sbc	hl,bc
+		ex	de,hl
+;dame vedet uzivateli a koncime
+		call	BEEPR
+		jp	ROMSRAM2				;udela pop af
+
+TSEMUL2	dec	de					;cista delka bloku
+		dec	de
+		dec	de
+		dec	de
+;ulozime delku a flagbyte (zneuzijem cache pro nacitani tzx)
+		ld	hl,TZXBUFF+2
+		pop	af
+		ld	(hl),a
+		dec	l					;jsme na zarovnane asrese
+		ld	(hl),d
+		dec	l
+		ld	(hl),e
+		dec	de					;delka samotnych dat
+		dec	de
+;ulozeni dulezitych parametru
+		push	de
+		push	ix
+		push	hl
+;zjisteni stavu zarizeni (vzpamatovani po resetu)
+		rst	40
+		defw	WAKEUP
+		ld	a,(STATUS)
+		dec	a
+		jp	nz,TSERROR
+		ld	a,(DISKNAME)
+		or	a
+		jp	z,TSERROR
+;inicializujem cache z ulozenych hodnot
+		ld	hl,TAPSLBA+2
+		ld	de,CACHELBA+2
+		ld	bc,3
+		lddr
+		inc	de
+		ld	hl,CACHE
+		push	hl
+		rst	40
+		defw	RDWR1SEC
+		pop	de
+		jp	c,TSERROR
+		ld	hl,(TAPSPOS)
+		add	hl,de
+		ld	(CACHEKUR),hl
+		sbc	hl,de
+		ex	de,hl
+		ld	hl,2048
+		sbc	hl,de
+		ld	(CACHEREM),hl
+;jednotlive zapisy (delka, flagbyte, data, crc, konec tapky)
+		pop	de
+		ld	bc,3
+		rst	40
+		defw	CAWRITE
+		pop	de					;adresa
+		pop	bc					;delka
+		push	bc
+		push	de
+		rst	40
+		defw	CAWRITE
+		pop	hl					;adresa
+		pop	bc					;delka
+;spocitame crc (xor)
+		ld	de,TZXBUFF+2
+		ld	a,(de)
+		jp	TSEPT2				;druha cast je jinde (nevesla se)
 
 ;konec odchyceni save
-
 
 
 BEF_LDBR
@@ -4407,8 +4635,7 @@ TPEML3	ex	af,af'
 		rra
 		jp	nc,ROMSRAM
 		ld	hl,(TAPCURS)
-TPEML2
-		ld	c,(hl)
+TPEML2	ld	c,(hl)
 		inc	hl
 		ld	b,(hl)
 		inc	hl
@@ -4468,15 +4695,9 @@ TPTELO	ld	a,(hl)
 		push	hl
 		rst	40
 		defw	CAINIT
-;zjisteni stavu zarizeni
-;(vzpamatovani po resetu)
-		ld	a,(DEVICE)
-		and	16
-		ld	ix,MAS_NAME
-		jr	z,TPTELOX
-		ld	ix,SLA_NAME
-TPTELOX	rst	40
-		defw	GETREADY
+;zjisteni stavu zarizeni (vzpamatovani po resetu)
+		rst	40
+		defw	WAKEUP
 		pop	hl
 		inc	hl		;preskoceni LBA
 		inc	hl
@@ -4496,8 +4717,7 @@ TPTELOX	rst	40
 		ld	a,l
 		or	h
 		jr	z,NOCORR
-;byla korekce adresy, musime
-;se posunout v souboru
+;byla korekce adresy, musime se posunout v souboru
 		push	bc
 		push	de
 		ld	b,h
@@ -4512,9 +4732,7 @@ NOCORR	rst	40
 ;schovej si uspesnost cteni
 TPSPOL	push	af
 		push	de
-;tady test na konec tapky znovu
-;jinak se ztraci kurzor na
-;konci tapky (pri vypisu)
+;tady test na konec tapky znovu, jinak se ztraci kurzor na konci tapky (pri vypisu)
 		ld	hl,(TAPCURS)
 		ld	a,(hl)
 		inc	hl
@@ -4526,10 +4744,10 @@ TPSPOL	push	af
 		ld	(TAPCURS),hl
 TPSPOL2
 ;korekce spravnych load hodnot
-		ld	de,0
 		pop	ix
 		pop	af
 		ccf
+TPRET	ld	de,0
 		jp	ROMSRAM
 
 ;Zjisti, jestli pozadovany blok
@@ -4958,10 +5176,11 @@ FLFND2	cp	12				;max. pocet znaku
 		bit	7,b
 		jp	nz,NEXTPG
 ;smazani spodniho radku
-CLSTATUS	rst	24
-		defb	22,23,128
+CLSTATUS	ld	hl,23*32+22528
+		ld	bc,31
+		xor	a
 		rst	40
-		defw	SPACES
+		defw	FILLBYTE
 		jp	VYBER
 
 
@@ -5403,8 +5622,7 @@ NOTAPIC
 SETCURS	ld	(TAPCURS),de
 		ret
 
-LEAVETAP
-		xor	a
+LEAVETAP	xor	a
 		ld	(TAPACT),a
 ;obnov dat. struktury disku
 		rst	40
@@ -5608,7 +5826,9 @@ DFWNOTF2	pop	hl
 		defb	19,0,18,128
 		jr	DFWESP
 		
-FWINSTALL	ld	hl,65535
+FWINSTALL	di
+		call	TOBASROM			;odstrankovani (pro jistotu)
+		ld	hl,65535
 		ld	a,3+CONMEM
 FWISM	ld	de,16383
 		ld	bc,8192
@@ -5661,14 +5881,11 @@ MKTAPIND	call	MKTISPC			;test mista
 ;flagbyte
 		call	CARDONE
 		jr	c,TAPFAIL2
-;pridej polozku do indexu
-		ld	(ix+0),e
-		ld	(ix+1),d
-		inc	ix
-		inc	ix
+		ex	de,hl
+		call	ADD2IND
 ;uloz flag
-		ld	(de),a
-		inc	de
+		ld	(hl),a
+		inc	hl
 ;sniz delku bloku o flag a crc
 		dec	bc
 ;pro pozdejsi seek nebo read
@@ -5676,7 +5893,6 @@ MKTAPIND	call	MKTISPC			;test mista
 ;podle flagu hlav/telo
 		push	af
 		dec	bc
-		ex	de,hl
 		ld	(hl),c
 		inc	hl
 		ld	(hl),b
@@ -5706,6 +5922,18 @@ TAPFAIL2	ld	a,3*8
 ;chyba tapky (nevejde se), nastav zluty kurzor
 TAPFAIL	ld	a,6*8
 		jp	BROWSTR
+
+;prida polozku do indexu a zvysi pocitadlo polozek
+ADD2IND	exx
+		ld	hl,(TAPITEMS)
+		inc	hl
+		ld	(TAPITEMS),hl
+		exx
+		ld	(ix+0),l
+		ld	(ix+1),h
+		inc	ix
+		inc	ix
+		ret
 
 TAPBODY
 ;uchovej lba nacteneho sektoru ale je to cislo dalsiho sektoru takze musis snizit o 1
@@ -5739,15 +5967,8 @@ TAPBODY
 		jr	c,TAPFAIL2
 		jp	MKTAPIND
 
-;vykona potrebne kroky pro inicializovani prace s TAP nebo TZX
-TAPEPREP	push	de
-;zazalohuj aktualni pozici vypisu a kurzoru
-		ld	a,(POZICE)
-		ld	(POZBAK),a
-		ld	hl,(VYPIS)
-		ld	(VYPBAK),hl
-;prenes jmeno
-		ld	hl,TAPNAME
+;na adresu v HL prenese jmeno souboru
+STORENAME	push	de
 		push	hl
 		ld	bc,31
 		ld	a,32
@@ -5761,10 +5982,21 @@ TAPEPREP	push	de
 ;neprenasej cislo verze souboru (oddelene strednikem)
 SEMICOL	ld	a,(hl)
 		cp	';'
-		jr	z,NOSEMIC
+		ret	z
 		ldi
 		jp	pe,SEMICOL
-NOSEMIC
+		ret
+
+;vykona potrebne kroky pro inicializovani prace s TAP nebo TZX
+TAPEPREP
+;zazalohuj aktualni pozici vypisu a kurzoru
+		ld	a,(POZICE)
+		ld	(POZBAK),a
+		ld	hl,(VYPIS)
+		ld	(VYPBAK),hl
+;prenes jmeno
+		ld	hl,TAPNAME
+		call	STORENAME
 ;v ix adresa cele polozky
 		ld	a,2*8
 		ld	(KURCOL),a
@@ -5790,6 +6022,7 @@ NOSEMIC
 		pop	hl
 		ld	c,4
 		ldir
+		ld	(TAPITEMS),bc		; pocet polozek v tapce = 0
 
 ;inicalizuj buffer a index (oboje se bude tvorit znovu)
 		ld	hl,BUFFER
@@ -5803,7 +6036,6 @@ NOSEMIC
 		defw	FILLBYTE
 
 		ld	ix,INDEX+2
-		ld	de,BUFFER
 ;udelej misto pro ".."
 		ld	(ix+0),255
 		ld	(ix+1),255
@@ -5811,6 +6043,7 @@ NOSEMIC
 		inc	ix
 ;load-cursor na prvni polozku
 		ld	(TAPCURS),ix
+		ld	de,BUFFER
 		ret
 
 ;zjisti, jestli neni moc souboru v indexu a bufferu
@@ -6003,13 +6236,10 @@ TZXFINLEN	bit	5,a
 		ld	a,3*8
 		ld	(KURCOL),a
 TZXSTOR	call	TLSUB
-		ld	a,(TZXBLKID)
 		ld	hl,(TZXBPOS)
-		ld	(ix+0),l
-		ld	(ix+1),h
-		inc	ix
-		inc	ix
+		call	ADD2IND
 ;pokud se jedna o standardni blok je treba ho prohledat a nacist pripadnou hlavicku
+		ld	a,(TZXBLKID)
 		cp	$10
 		jr	nz,TZXSTOR2
 ;fixme - spojit s MKTAPIND
@@ -7534,11 +7764,47 @@ NOVRSCRE	ex	de,hl
 	endif ;WITH_SCR
 
 NOVRSCR	call	GETSUFF
-		jr	nz,NOVRWRT	;soubor nema priponu
+		jp	nz,NOVRWRT	;soubor nema priponu
 		inc	hl
+;adresa celeho jmena na zasob.
+		push	de
+		ld	de,EXTTAP
+		call	TESTPRIP
+		pop	de
+		jr	nz,NOVRTAP
+;FIXME - projit tapku a pridavat data az na konec
+		ld	hl,TAPSNAME
+		call	STORENAME
+;v ix adresa cele polozky
+;priznak: pracujem s tapkou (v A by mel byt nejaky ascii kod)
+		ld	(TAPSACT),a
+;schovej si LBA a delku tapky 2x (jednou pro vypis a podruhe po pocitani zbyvajiciho mista)
+		push	ix
+		pop	hl
+		ld	de,7
+		add	hl,de
+		ld	de,TAPSLBA
+		ld	bc,3
+		ldir
+		ld	c,4
+		push	hl
+		ldir
+		pop	hl
+		ld	c,4
+		ldir
+;inicializace zbytku
+		ld	hl,0
+		ld	(TAPSPOS),hl
+		ld	(TAPSITEMS),hl
 
-;sem pridat tapku (z80 be melo byt posledni v rade)
 
+		ret			;navrat do NMI menu
+
+
+
+
+
+NOVRTAP
 	ifdef WITH_Z80
 ;adresa celeho jmena na zasob.
 ;		push	de
@@ -7621,7 +7887,7 @@ KURZORA	push	hl
 ;atrib kopie
 		ld	hl,22528
 		ld	de,22529		;rychlejsi
-		ld	bc,767
+		ld	bc,767-64		;bez dvou spodnich radku
 		ld	(hl),7
 		ldir
 ;az sem
@@ -7896,10 +8162,12 @@ TZXTEXTS	defw	16 dup (TZXTID00)
 ROMEND1
 
 ;strankovani zpet do ROM ZXS
-		org	8192+$1FF0
-		phase $1FF0
-ROMSRAM	ld	a,BACKPAGE
+		org	8192+$1FEE
+		phase $1FEE
+ROMSRAM	push	af
+ROMSRAM2	ld	a,BACKPAGE
 		out	(RAMPORT),a		;potebujem zachovat HL
+		pop	af
 		jr	TOBASROM
 ;shodne s CONROM, navesti odtamtud
 		pop	af				;EIROM2

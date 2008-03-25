@@ -5,8 +5,10 @@
     * New:
     - improved screensaver
     - alternate way to call reset (for ISO ROM)
-    - can overwrite data on image (only color and monochrom screens for now)
-    - can install another firmware into MAPRAM (.dfw files)
+    - small design change (more things to show)
+    - can overwrite data on image (color and monochrom screens)
+    - first version of save into TAP files (overwrite existing files), needs lots of improvement
+    - can install another firmware into internal divIDE's memory (.dfw files)
 
 
 2006-12-17

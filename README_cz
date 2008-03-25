@@ -141,7 +141,7 @@ V druhém øádku je seznam podporovaných formátù
 - MFC = snapy MFC, povoluje WITH_MFC v config.a80
 - SCR = prohlí¾eè obrázkù, povoluje WITH_SCR v config.a80
 - POK = PokeManager, povoluje WITH_POK v config.a80
-- DFW = DivIDE FirmWare, soubor pro instalaci jinych firmware do MAPRAMu
+- DFW = DivIDE FirmWare, soubor pro instalaci jiných firmware do MAPRAMu
 
 Ve tøetím øádku jsou ostatní moduly a nastavení
 - CHS = podpora pro HDD bez LBA, povoluje WITH_CHS v config.a80
