@@ -1,0 +1,7 @@
+Here are an images of another divIDE firmwares with "install" files. DEMFIR can
+install them directly into divIDE's internal memory and runs them.
+
+tbiosv14.*    - TBIOS (basic fw for divIDE hw test), http://85.132.166.194:21002/~zilog/divIDE_57b/System/TBIOS/
+fatware.*     - FATware (direct MSDOS FAT support), http://baze.au.com/divide/
+bootloader.*  - MDOS3 loader (D40/D80 emulator), http://ci5.speccy.cz/mdos3/mdos3-download.php
+plusdivide.*  - +DivIDE (DISCiPLE/+D emulator), http://www.biehold.nl/rudy/+divide/index.htm
