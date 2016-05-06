@@ -32,7 +32,11 @@
 		include "config.a80"
 
 ;DVERS	equ	"d0.8a"
-DVERS	equ	"80324"
+;DVERS	equ	"80324"
+
+;bugfix by ub880d & mikezt
+DVERS	equ	"81123"
+
 
 ;------------------------------
 ; Definice konstant pro HADR
@@ -879,6 +883,10 @@ GETISO2	push	hl
 		ld	de,INDEX+2
 		pop	hl
 		call	GETIND
+;bugfix_start - bugfix by ub880d & mikezt
+		inc	de
+		inc	de
+;bufix_end - bugfix by ub880d & mikezt
 		ld	(ADR2SEC),de
 		ld	hl,(DIRLEN)
 ;adresar ma jen jeden sektor?
